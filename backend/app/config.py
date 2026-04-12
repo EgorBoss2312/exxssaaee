@@ -1,0 +1,59 @@
+from pathlib import Path
+from typing import Optional
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
+_ENV_FILE = _BACKEND_ROOT / ".env"
+# Абсолютный путь: можно запускать uvicorn из любой директории
+_DEFAULT_SQLITE = f"sqlite:///{(_BACKEND_ROOT / 'data' / 'app.db').as_posix()}"
+
+
+class Settings(BaseSettings):
+    # По умолчанию — SQLite (без Docker и без PostgreSQL)
+    database_url: str = _DEFAULT_SQLITE
+    jwt_secret: str = "change-me-in-production-use-long-random-string"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 60 * 24 * 7
+    allow_registration: bool = False
+    openai_api_key: Optional[str] = None
+    openai_base_url: Optional[str] = None
+    openai_model: str = "gpt-4o-mini"
+    gemini_api_key: Optional[str] = None
+    gemini_model: str = "gemini-2.5-flash"
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "llama3.2"
+    embedding_model: str = "paraphrase-multilingual-MiniLM-L12-v2"
+    upload_dir: str = "data/uploads"
+    cors_origins: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,"
+        "http://localhost:8000,http://127.0.0.1:8000"
+    )
+
+    model_config = SettingsConfigDict(
+        env_file=str(_ENV_FILE),
+        env_file_encoding="utf-8",
+        extra="ignore",
+        # Пустые значения переменных окружения не подставляются как ""
+        env_ignore_empty=True,
+    )
+
+    @field_validator("openai_api_key", "gemini_api_key", mode="before")
+    @classmethod
+    def _strip_api_keys(cls, v: object) -> Optional[str]:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            s = v.strip()
+            return s if s else None
+        return v
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+
+def get_settings() -> Settings:
+    """Без lru_cache: после сохранения backend/.env достаточно перезагрузить страницу (новый запрос прочитает файл)."""
+    return Settings()

@@ -1,0 +1,41 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: edda
+      POSTGRES_PASSWORD: edda
+      POSTGRES_DB: edda
+    volumes:
+      - edda_pg:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U edda -d edda"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://edda:edda@db:5432/edda
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      CORS_ORIGINS: "http://localhost:8000,http://127.0.0.1:8000"
+      UPLOAD_DIR: /app/data/uploads
+      # Опционально LLM (переменные можно задать в .env рядом с compose или export)
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - edda_uploads:/app/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  edda_pg:
+  edda_uploads:
