@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from app.routers import admin, auth, chat, documents, meta
 from app.seed import init_extensions, seed_if_empty
 
 settings = get_settings()
+_log = logging.getLogger(__name__)
 
 app = FastAPI(title="ООО «ЭДДА» — корпоративная база знаний", version="1.0.0")
 
@@ -35,6 +37,11 @@ app.include_router(meta.router, prefix="/api")
 
 @app.on_event("startup")
 def _startup():
+    _log.info(
+        "CORS: %d origin(s), regex=%s",
+        len(settings.cors_origins_list),
+        bool(settings.cors_origin_regex),
+    )
     os.makedirs(settings.upload_dir, exist_ok=True)
     if "sqlite" in settings.database_url:
         (Path(__file__).resolve().parent.parent / "data").mkdir(parents=True, exist_ok=True)

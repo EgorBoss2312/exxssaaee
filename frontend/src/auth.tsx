@@ -8,12 +8,13 @@ import {
   type ReactNode,
 } from "react";
 import type { UserMe } from "./api";
-import { apiGet, getApiBase } from "./api";
+import { apiGet, resolveApiUrl } from "./api";
 
 const LOGIN_UNAVAILABLE =
-  "Сервер API не отвечает. Локально: порт 8000 и адрес http://127.0.0.1:8000. " +
-  "На деплое: если фронт и API на разных доменах — задайте VITE_API_BASE_URL при сборке или window.__EDDA_API_BASE__; " +
-  "на бэкенде укажите CORS_ORIGINS с точным URL сайта (https://…). HTTPS-страница не может вызывать API по http.";
+  "Сервер API не отвечает. Откройте DevTools → Network: виден ли запрос к /api/auth/login, статус (blocked/CORS/mixed content). " +
+  "Проверьте прокси nginx: /api должен идти на Uvicorn (см. deploy/nginx-example.conf). " +
+  "Разные домены: VITE_API_BASE_URL или meta edda-api-base; на бэкенде CORS_ORIGINS=https://ваш-сайт. " +
+  "Подкаталог SPA: задайте base в vite.config. Локально: backend на :8000, http://127.0.0.1:8000.";
 
 type AuthState = {
   user: UserMe | null;
@@ -59,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     let r: Response;
     try {
-      r = await fetch(`${getApiBase()}/api/auth/login`, {
+      r = await fetch(resolveApiUrl("/api/auth/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),

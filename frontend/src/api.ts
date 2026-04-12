@@ -2,13 +2,25 @@ function stripTrailingSlash(s: string): string {
   return s.replace(/\/+$/, "");
 }
 
+/** Путь приложения из Vite (`base` в vite.config), без хвостового `/`. Пусто = корень сайта. */
+function vitePublicBasePath(): string {
+  const b = import.meta.env.BASE_URL ?? "/";
+  if (b === "/" || b === "") return "";
+  const norm = b.startsWith("/") ? b : `/${b}`;
+  return stripTrailingSlash(norm);
+}
+
 /**
- * База URL бэкенда без завершающего `/`.
- * Пустая строка — запросы на тот же origin (один контейнер, nginx с общим хостом).
- * На деплое с разными доменами: при сборке `VITE_API_BASE_URL`, либо в index.html до бандла:
- * `window.__EDDA_API_BASE__ = "https://api.ваш-домен.ru";`
+ * Явная база API (другой домен или абсолютный URL), без завершающего `/`.
+ * Приоритет: meta → window → VITE_API_BASE_URL.
  */
-export function getApiBase(): string {
+function configuredApiBase(): string {
+  if (typeof document !== "undefined") {
+    const meta = document
+      .querySelector('meta[name="edda-api-base"]')
+      ?.getAttribute("content");
+    if (meta && meta.trim() !== "") return stripTrailingSlash(meta.trim());
+  }
   if (typeof window !== "undefined") {
     const w = window as Window & { __EDDA_API_BASE__?: unknown };
     const injected = w.__EDDA_API_BASE__;
@@ -23,19 +35,41 @@ export function getApiBase(): string {
   return "";
 }
 
+/**
+ * URL для fetch к бэкенду: учитывает другой хост (VITE/meta), подкаталог SPA (`import.meta.env.BASE_URL`)
+ * и обычный случай «тот же origin» (относительный путь `/api/...`).
+ */
+export function resolveApiUrl(path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  const custom = configuredApiBase();
+  if (custom !== "") {
+    return `${custom}${p}`;
+  }
+  const sub = vitePublicBasePath();
+  if (sub !== "" && typeof window !== "undefined") {
+    return `${window.location.origin}${sub}${p}`;
+  }
+  return p;
+}
+
+/** Только явно заданная база (без подкаталога Vite) — для подсказок. */
+export function getApiBase(): string {
+  return configuredApiBase();
+}
+
 function authHeader(): HeadersInit {
   const t = localStorage.getItem("token");
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
-  const r = await fetch(`${getApiBase()}${path}`, { headers: { ...authHeader() } });
+  const r = await fetch(resolveApiUrl(path), { headers: { ...authHeader() } });
   if (!r.ok) throw new Error(await r.text());
   return r.json() as Promise<T>;
 }
 
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const r = await fetch(`${getApiBase()}${path}`, {
+  const r = await fetch(resolveApiUrl(path), {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeader() },
     body: JSON.stringify(body),
@@ -45,7 +79,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
-  const r = await fetch(`${getApiBase()}${path}`, {
+  const r = await fetch(resolveApiUrl(path), {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...authHeader() },
     body: JSON.stringify(body),
@@ -58,7 +92,7 @@ export async function apiUpload(
   path: string,
   form: FormData,
 ): Promise<unknown> {
-  const r = await fetch(`${getApiBase()}${path}`, {
+  const r = await fetch(resolveApiUrl(path), {
     method: "POST",
     headers: { ...authHeader() },
     body: form,
@@ -68,7 +102,7 @@ export async function apiUpload(
 }
 
 export async function apiDelete(path: string): Promise<void> {
-  const r = await fetch(`${getApiBase()}${path}`, {
+  const r = await fetch(resolveApiUrl(path), {
     method: "DELETE",
     headers: { ...authHeader() },
   });
@@ -76,7 +110,7 @@ export async function apiDelete(path: string): Promise<void> {
 }
 
 export async function downloadAuthed(path: string, filename: string): Promise<void> {
-  const r = await fetch(`${getApiBase()}${path}`, { headers: { ...authHeader() } });
+  const r = await fetch(resolveApiUrl(path), { headers: { ...authHeader() } });
   if (!r.ok) throw new Error(await r.text());
   const blob = await r.blob();
   const url = URL.createObjectURL(blob);

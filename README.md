@@ -115,7 +115,8 @@ OLLAMA_MODEL=llama3.2
 
 **Если на сервере снова «Failed to fetch» при входе (а локально всё ок):**
 
-1. **Один домен и nginx** — убедитесь, что запросы к `/api` проксируются на Uvicorn (как в локальном Docker: фронт и API с одного `origin`).
-2. **Фронт и API на разных URL** — при сборке фронта задайте базу API: `VITE_API_BASE_URL=https://api.ваш-домен.ru` (`npm run build` или `docker build --build-arg VITE_API_BASE_URL=...`). Либо в собранном `index.html` до подключения JS задайте `window.__EDDA_API_BASE__ = "https://api....";`.
-3. **CORS** — в окружении бэкенда перечислите точный URL фронта: `CORS_ORIGINS=https://приложение.example.com` (несколько через запятую). Для превью-доменов можно `CORS_ORIGIN_REGEX` (см. `backend/.env.example`).
-4. **HTTPS** — страница по `https://` не может вызывать API по `http://` (браузер блокирует).
+1. **Один домен и nginx** — запросы к **`/api/`** должны уходить на Uvicorn, а не в статику. Пример: `deploy/nginx-example.conf`. В логах при старте API видно строку `CORS: N origin(s)` — проверьте, что `N` не 0 и в списке есть ваш `https://…`.
+2. **Фронт и API на разных URL** — при сборке: `VITE_API_BASE_URL=https://api.ваш-домен.ru` или в `index.html` мета-тег `<meta name="edda-api-base" content="https://api...." />` / `window.__EDDA_API_BASE__`.
+3. **Подкаталог сайта** (`https://host.ru/app/`) — в `frontend/vite.config.ts` задайте `base: '/app/'`, пересоберите фронт; либо укажите полный URL API через `VITE_API_BASE_URL`.
+4. **CORS** — `CORS_ORIGINS=https://точный-url-фронта` (схема и домен как в адресной строке). Превью: `CORS_ORIGIN_REGEX` в `backend/.env.example`.
+5. **HTTPS** — страница по `https://` не может вызывать API по `http://`.

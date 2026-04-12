@@ -63,7 +63,16 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins_list(self) -> list[str]:
-        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        xs = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        # Пустой список из ошибки в .env ломает CORS для всех; возвращаем дефолт разработки
+        if not xs:
+            return [
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                "http://localhost:8000",
+                "http://127.0.0.1:8000",
+            ]
+        return xs
 
 
 def get_settings() -> Settings:
