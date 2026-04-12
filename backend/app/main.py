@@ -37,6 +37,11 @@ app.include_router(meta.router, prefix="/api")
 
 @app.on_event("startup")
 def _startup():
+    if os.environ.get("EDDA_USE_HASH_EMBEDDINGS", "").strip().lower() in ("1", "true", "yes"):
+        _log.warning(
+            "EDDA_USE_HASH_EMBEDDINGS включён: эмбеддинги без PyTorch (~512MB RAM). "
+            "Качество семантического поиска ниже; для полноценного RAG отключите и используйте инстанс ≥2GB RAM."
+        )
     _log.info(
         "CORS: %d origin(s), regex=%s",
         len(settings.cors_origins_list),

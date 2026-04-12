@@ -1,6 +1,13 @@
-# Render.com: New → Blueprint → выбрать репозиторий → Apply
-# Один контейнер: статика + FastAPI на одном https://… (вход работает без VITE_API_BASE_URL)
+# Render.com: New → Blueprint → репозиторий → Apply
+# Один контейнер: статика + FastAPI на одном https://… (вход без VITE_API_BASE_URL)
 # Первая сборка долгая (PyTorch + модель эмбеддингов при первом запросе)
+#
+# ВАЖНО — где лежит корень Git:
+# • Репозиторий = только этот проект (в корне лежат Dockerfile, frontend/, backend/ рядом
+#   с ЭТИМ файлом) — оставьте как ниже, rootDir не нужен.
+# • Репозиторий выше по дереву (например папка «диплом» с подпапкой edda-portal) —
+#   файл render.yaml должен быть в КОРНЕ репозитория с rootDir: edda-portal.
+#   В этом проекте см. ../render.yaml
 
 services:
   - type: web
@@ -15,4 +22,8 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: PYTHONUNBUFFERED
+        value: "1"
+      # Render Free = 512MB RAM: PyTorch+SentenceTransformer при старте не помещаются.
+      # Псевдо-эмбеддинги (хуже RAG, но вход и приложение работают). Для нормального RAG: plan standard (2GB) и уберите эту переменную.
+      - key: EDDA_USE_HASH_EMBEDDINGS
         value: "1"

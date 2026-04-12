@@ -8,19 +8,37 @@
 
 ## Сайт в интернете (простой вариант)
 
-**Почему на Vercel не работал вход:** там был только фронт. Запросы на `/api` шли на Vercel, а не в Python — поэтому **404**.
+**Почему в браузере «Сервер API не отвечает»:** развёрнут **только** собранный фронт (статика), а **FastAPI не запущен** или nginx отдаёт файлы из `dist`, но **не проксирует** `/api` на Uvicorn. Вход идёт на `POST /api/auth/login` — без бэкенда запрос пустой или 404.
 
-**Что сделать без ручной возни с переменными:** поднять **один** сервис из этого репозитория (и фронт, и API на **одном https-адресе**). Тогда ничего прописывать в `VITE_API_BASE_URL` не нужно.
+**Правильный прод:** один процесс с **Python + статикой из одного образа** (корневой `Dockerfile`: Vite → `dist` внутри образа, Uvicorn отдаёт и `/api`, и SPA). Тогда **`VITE_API_BASE_URL` не нужен** (запросы к API с того же origin).
 
 ### Вариант A — Render.com (рекомендуется)
 
 1. Зайти на [render.com](https://render.com) и войти через **GitHub**.  
 2. **New** → **Blueprint** → выбрать репозиторий с проектом.  
-3. Render подхватит **`render.yaml`** из корня → нажать **Apply**.  
+3. Render подхватит **`render.yaml` из корня репозитория** → нажать **Apply**.  
+   Если в корне Git лежит папка **`edda-portal/`**, а `Dockerfile` внутри неё — используйте **`render.yaml` из корня монорепозитория** (в шаблоне проекта он рядом с папкой `edda-portal`, с полем **`rootDir: edda-portal`**). Иначе Render ищет `./Dockerfile` в корне репо и синхронизация падает.  
 4. Дождаться окончания сборки и деплоя (первый раз может занять **много минут**: Docker, PyTorch).  
 5. Открыть выданный URL вида `https://…onrender.com` → вход: **`admin@edda.local`** / **`Admin123!`**
 
 На бесплатном тарифе сервис «засыпает» — первый запрос после паузы может идти **1–2 минуты**. Данные SQLite в контейнере при пересоздании сервиса могут обнуляться — для дипломного прототипа обычно достаточно.
+
+**Лимит 512MB RAM на Free:** загрузка **PyTorch + sentence-transformers** при старте не помещается в память → ошибка вроде `Ran out of memory (used over 512MB)`. В **`render.yaml`** задано **`EDDA_USE_HASH_EMBEDDINGS=1`**: эмбеддинги считаются без ML (качество поиска по смыслу ниже, зато вход и приложение работают). Для полноценного семантического RAG на Render нужен тип инстанса **Standard (2GB)** и **удалите** переменную `EDDA_USE_HASH_EMBEDDINGS` (или поставьте `0`).
+
+### Вариант A2 — Railway
+
+Репозиторий с корнем **`edda-portal`** (где лежат `Dockerfile` и `railway.toml`) → **Deploy**. В **Variables** задайте сильный **`JWT_SECRET`**. Платформа подставляет **`PORT`** — образ уже слушает `${PORT:-8000}`.
+
+### Вариант A3 — свой VPS / железо (полный стек без Postgres)
+
+Из каталога `edda-portal`:
+
+```bash
+export JWT_SECRET="$(openssl rand -hex 32)"
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Откройте **http://127.0.0.1:8000**. Данные SQLite и загрузки — в Docker-томе `edda_app_data`. Перед **своим доменом** с HTTPS: поставьте nginx и используйте **`deploy/nginx-full-proxy-to-uvicorn.conf`** (весь трафик на Uvicorn), либо убедитесь, что в split-конфиге **`location /api/`** уходит на бэкенд — см. **`deploy/nginx-example.conf`**.
 
 ### Вариант B — остаться на Vercel для фронта
 
@@ -137,7 +155,7 @@ OLLAMA_MODEL=llama3.2
 
 **Если на сервере снова «Failed to fetch» при входе (а локально всё ок):**
 
-1. **Один домен и nginx** — запросы к **`/api/`** должны уходить на Uvicorn, а не в статику. Пример: `deploy/nginx-example.conf`. В логах при старте API видно строку `CORS: N origin(s)` — проверьте, что `N` не 0 и в списке есть ваш `https://…`.
+1. **Один домен и nginx** — либо проксируйте **всё** на Uvicorn: `deploy/nginx-full-proxy-to-uvicorn.conf` (рекомендуется при деплое из корневого `Dockerfile`). Либо, если статика лежит на диске отдельно от API, запросы к **`/api/`** обязаны уходить на Uvicorn — пример: `deploy/nginx-example.conf`. В логах при старте API видно строку `CORS: N origin(s)` — проверьте, что `N` не 0 и в списке есть ваш `https://…`.
 2. **Фронт и API на разных URL** — при сборке: `VITE_API_BASE_URL=https://api.ваш-домен.ru` или в `index.html` мета-тег `<meta name="edda-api-base" content="https://api...." />` / `window.__EDDA_API_BASE__`.
 3. **Подкаталог сайта** (`https://host.ru/app/`) — в `frontend/vite.config.ts` задайте `base: '/app/'`, пересоберите фронт; либо укажите полный URL API через `VITE_API_BASE_URL`.
 4. **CORS** — `CORS_ORIGINS=https://точный-url-фронта` (схема и домен как в адресной строке). Превью: `CORS_ORIGIN_REGEX` в `backend/.env.example`.

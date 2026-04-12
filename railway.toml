@@ -1,0 +1,7 @@
+# Railway: New Project → Deploy from GitHub; билдер подхватит Dockerfile из корня.
+# Variables: JWT_SECRET (обязательно в проде); при своём домене — CORS_ORIGINS=https://…
+# Проверка: GET /api/health
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"

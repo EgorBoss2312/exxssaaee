@@ -1,0 +1,31 @@
+# Полный стек на одном хосте: FastAPI + встроенная статика Vite (см. Dockerfile).
+# БД по умолчанию — SQLite в томе /app/data (без отдельного Postgres).
+#
+# Запуск: из каталога edda-portal
+#   export JWT_SECRET="$(openssl rand -hex 32)"
+#   docker compose -f docker-compose.prod.yml up -d --build
+# Откройте http://127.0.0.1:8000 (за reverse-proxy — ваш домен).
+#
+# Свой домен: задайте CORS_ORIGINS=https://ваш-домен.ru в .env рядом с compose
+# или в environment ниже.
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      PYTHONUNBUFFERED: "1"
+      JWT_SECRET: ${JWT_SECRET:-change-me-set-JWT_SECRET-in-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
+      CORS_ORIGIN_REGEX: ${CORS_ORIGIN_REGEX:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - edda_app_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  edda_app_data:
