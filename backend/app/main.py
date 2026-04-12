@@ -17,8 +17,22 @@ from app.seed import init_extensions, seed_if_empty
 settings = get_settings()
 _log = logging.getLogger(__name__)
 
-app = FastAPI(title="ООО «ЭДДА» — корпоративная база знаний", version="1.0.0")
+# Отдельное приложение под /api — иначе catch-all GET /{full_path} перехватывает все пути и POST /api/... даёт 405.
+api_app = FastAPI(title="ООО «ЭДДА» — API", version="1.0.0")
 
+api_app.include_router(auth.router, prefix="")
+api_app.include_router(documents.router, prefix="")
+api_app.include_router(chat.router, prefix="")
+api_app.include_router(admin.router, prefix="")
+api_app.include_router(meta.router, prefix="")
+
+
+@api_app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+app = FastAPI(title="ООО «ЭДДА» — корпоративная база знаний", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -27,12 +41,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-app.include_router(auth.router, prefix="/api")
-app.include_router(documents.router, prefix="/api")
-app.include_router(chat.router, prefix="/api")
-app.include_router(admin.router, prefix="/api")
-app.include_router(meta.router, prefix="/api")
+app.mount("/api", api_app)
 
 
 @app.on_event("startup")
@@ -59,11 +68,6 @@ def _startup():
         db.close()
 
 
-@app.get("/api/health")
-def health():
-    return {"status": "ok"}
-
-
 # --- SPA static (production / docker): set FRONTEND_DIST to built Vite `dist` folder ---
 def _dist_dir() -> str | None:
     d = os.environ.get("FRONTEND_DIST")
@@ -83,10 +87,6 @@ if _dist:
 
     @app.get("/{full_path:path}")
     def spa_fallback(full_path: str):
-        # API обслуживается отдельными маршрутами выше
-        segs = full_path.strip("/").split("/")
-        if segs and segs[0] == "api":
-            raise HTTPException(status_code=404)
         fp = os.path.join(_dist, full_path)
         if full_path and os.path.isfile(fp):
             return FileResponse(fp)
