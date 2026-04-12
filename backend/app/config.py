@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -8,6 +9,30 @@ _BACKEND_ROOT = Path(__file__).resolve().parent.parent
 _ENV_FILE = _BACKEND_ROOT / ".env"
 # Абсолютный путь: можно запускать uvicorn из любой директории
 _DEFAULT_SQLITE = f"sqlite:///{(_BACKEND_ROOT / 'data' / 'app.db').as_posix()}"
+
+
+def _origins_from_paas_env() -> list[str]:
+    """Публичный URL сервиса на Render/Railway/Fly — чтобы CORS не ломался без ручного .env."""
+    out: list[str] = []
+    render = os.environ.get("RENDER_EXTERNAL_URL", "").strip()
+    if render:
+        out.append(render.rstrip("/"))
+    railway = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip()
+    if railway:
+        if railway.startswith("http"):
+            out.append(railway.rstrip("/"))
+        else:
+            out.append(f"https://{railway.lstrip('/')}")
+    rail_url = os.environ.get("RAILWAY_STATIC_URL", "").strip()
+    if rail_url:
+        out.append(rail_url.rstrip("/"))
+    fly = os.environ.get("FLY_APP_NAME", "").strip()
+    if fly:
+        out.append(f"https://{fly}.fly.dev")
+    manual = os.environ.get("PUBLIC_SITE_URL", "").strip()
+    if manual:
+        out.append(manual.rstrip("/"))
+    return out
 
 
 class Settings(BaseSettings):
@@ -66,13 +91,14 @@ class Settings(BaseSettings):
         xs = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
         # Пустой список из ошибки в .env ломает CORS для всех; возвращаем дефолт разработки
         if not xs:
-            return [
+            xs = [
                 "http://localhost:5173",
                 "http://127.0.0.1:5173",
                 "http://localhost:8000",
                 "http://127.0.0.1:8000",
             ]
-        return xs
+        extra = _origins_from_paas_env()
+        return list(dict.fromkeys([*xs, *extra]))
 
 
 def get_settings() -> Settings:

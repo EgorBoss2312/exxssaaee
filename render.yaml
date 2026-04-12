@@ -1,0 +1,18 @@
+# Render.com: New → Blueprint → выбрать репозиторий → Apply
+# Один контейнер: статика + FastAPI на одном https://… (вход работает без VITE_API_BASE_URL)
+# Первая сборка долгая (PyTorch + модель эмбеддингов при первом запросе)
+
+services:
+  - type: web
+    name: edda-portal
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PYTHONUNBUFFERED
+        value: "1"
