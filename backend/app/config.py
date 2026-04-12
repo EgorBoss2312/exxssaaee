@@ -6,6 +6,8 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent
+# Корень backend (в Docker WORKDIR это /app) — для относительных путей к uploads
+BACKEND_ROOT = _BACKEND_ROOT
 _ENV_FILE = _BACKEND_ROOT / ".env"
 # Абсолютный путь: можно запускать uvicorn из любой директории
 _DEFAULT_SQLITE = f"sqlite:///{(_BACKEND_ROOT / 'data' / 'app.db').as_posix()}"

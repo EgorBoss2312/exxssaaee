@@ -20,6 +20,7 @@ if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 
 from app.config import get_settings  # noqa: E402
+from app.storage_paths import normalize_storage_path  # noqa: E402
 from app.database import SessionLocal  # noqa: E402
 from app.labor_kb_build import build_documents  # noqa: E402
 from app.models import Document, Role, User  # noqa: E402
@@ -79,7 +80,7 @@ def main() -> int:
             doc = Document(
                 title=title,
                 original_filename=fname,
-                storage_path=str(dest),
+                storage_path=normalize_storage_path(dest),
                 mime_type="text/plain",
                 uploaded_by_id=admin.id,
             )

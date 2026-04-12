@@ -12,12 +12,13 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select
 
-from app.config import get_settings
+from app.config import BACKEND_ROOT, get_settings
 from app.database import get_db
 from app.deps import get_current_user, require_kb_manager
 from app.models import Document, Role, User, document_roles
 from app.schemas import DocumentOut
 from app.services.ingest import attach_roles, reindex_document
+from app.storage_paths import normalize_storage_path, resolve_storage_path
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -100,7 +101,7 @@ def download_file(
         allowed = {r.id for r in doc.allowed_roles}
         if user.role_id not in allowed:
             raise HTTPException(status_code=403, detail="Нет доступа")
-    path = Path(doc.storage_path)
+    path = resolve_storage_path(doc.storage_path)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Файл отсутствует на сервере")
     return FileResponse(path, filename=doc.original_filename, media_type=doc.mime_type or "application/octet-stream")
@@ -125,14 +126,15 @@ async def upload_document(
     os.makedirs(settings.upload_dir, exist_ok=True)
     ext = Path(file.filename or "file").suffix
     stored = f"{uuid.uuid4().hex}{ext}"
-    dest = Path(settings.upload_dir) / stored
+    ud = Path(settings.upload_dir)
+    dest = (BACKEND_ROOT / ud / stored) if not ud.is_absolute() else (ud / stored)
     with dest.open("wb") as f:
         shutil.copyfileobj(file.file, f)
 
     doc = Document(
         title=title.strip(),
         original_filename=file.filename or stored,
-        storage_path=str(dest),
+        storage_path=normalize_storage_path(dest),
         mime_type=file.content_type,
         uploaded_by_id=user.id,
     )
@@ -157,7 +159,7 @@ def delete_document(
     doc = db.query(Document).filter(Document.id == doc_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Не найдено")
-    path = Path(doc.storage_path)
+    path = resolve_storage_path(doc.storage_path)
     db.delete(doc)
     db.commit()
     try:

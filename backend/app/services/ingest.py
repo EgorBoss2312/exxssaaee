@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import Chunk, Document, Role
+from app.storage_paths import resolve_storage_path
 from app.services.chunking import chunk_text
 from app.services.embeddings import embed_texts
 from app.services.text_extract import extract_text_from_file
@@ -15,7 +16,7 @@ from app.services.text_extract import extract_text_from_file
 
 def reindex_document(db: Session, doc: Document) -> None:
     settings = get_settings()
-    path = Path(doc.storage_path)
+    path = resolve_storage_path(doc.storage_path)
     if not path.is_file():
         doc.text_content = ""
     else:

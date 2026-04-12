@@ -43,8 +43,8 @@ def llm_status(_: Annotated[User, Depends(get_current_user)]) -> LlmStatusOut:
     return LlmStatusOut(
         mode="extractive",
         hint=(
-            "В backend/.env нет ключей LLM (или файл не сохранён на диск). "
-            "Вставьте GEMINI_API_KEY или OPENAI_API_KEY в одну строку после «=», сохраните файл и перезапустите сервер. "
-            f"Либо Ollama: {base} и ollama pull {settings.ollama_model}"
+            "Локально: в backend/.env задайте GEMINI_API_KEY или OPENAI_API_KEY и перезапустите сервер. "
+            "На Render/Railway: Environment → добавьте ту же переменную (без кавычек), redeploy. "
+            f"Либо Ollama по адресу {base} и ollama pull {settings.ollama_model}"
         ),
     )

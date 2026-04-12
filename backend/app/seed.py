@@ -4,7 +4,8 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.auth_core import hash_password
-from app.config import get_settings
+from app.config import BACKEND_ROOT, get_settings
+from app.storage_paths import normalize_storage_path
 from app.models import Document, Role, User
 from app.services.ingest import attach_roles, reindex_document
 
@@ -124,17 +125,20 @@ def seed_if_empty(db: Session) -> None:
         ),
     ]
 
-    os.makedirs(settings.upload_dir, exist_ok=True)
+    ud = Path(settings.upload_dir)
+    if not ud.is_absolute():
+        ud = BACKEND_ROOT / ud
+    ud.mkdir(parents=True, exist_ok=True)
 
     for title, fname, body, role_codes in samples:
         path = kb_dir / fname
         path.write_text(body, encoding="utf-8")
-        dest = Path(settings.upload_dir) / fname
+        dest = ud / fname
         dest.write_text(body, encoding="utf-8")
         doc = Document(
             title=title,
             original_filename=fname,
-            storage_path=str(dest),
+            storage_path=normalize_storage_path(dest),
             mime_type="text/plain",
             uploaded_by_id=admin_id,
         )

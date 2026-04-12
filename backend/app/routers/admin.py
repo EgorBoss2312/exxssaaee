@@ -6,10 +6,45 @@ from sqlalchemy.orm import Session
 from app.auth_core import hash_password
 from app.database import get_db
 from app.deps import require_admin
-from app.models import Role, User
+from app.models import Document, Role, User
+from app.services.ingest import reindex_document
+from app.storage_paths import normalize_storage_path, resolve_storage_path
 from app.schemas import AdminUserCreate, AdminUserUpdate, RoleOut, UserOut
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@router.post("/reindex-documents")
+def reindex_all_documents(
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[User, Depends(require_admin)],
+):
+    """
+    Пересчитать текст и чанки для всех документов, поправить storage_path в БД
+    (если раньше сохранялись абсолютные пути с другой машины).
+    """
+    docs = db.query(Document).order_by(Document.id.asc()).all()
+    reindexed = 0
+    missing = 0
+    normalized = 0
+    for doc in docs:
+        path = resolve_storage_path(doc.storage_path)
+        if not path.is_file():
+            missing += 1
+            continue
+        new_sp = normalize_storage_path(path)
+        if doc.storage_path != new_sp:
+            doc.storage_path = new_sp
+            normalized += 1
+        reindex_document(db, doc)
+        reindexed += 1
+    db.commit()
+    return {
+        "reindexed": reindexed,
+        "missing_files": missing,
+        "paths_normalized": normalized,
+        "total": len(docs),
+    }
 
 
 @router.get("/roles", response_model=list[RoleOut])
