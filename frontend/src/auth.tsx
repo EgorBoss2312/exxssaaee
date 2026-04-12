@@ -69,6 +69,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(LOGIN_UNAVAILABLE);
     }
     if (!r.ok) {
+      if (r.status === 404) {
+        const onVercel =
+          typeof window !== "undefined" &&
+          (window.location.hostname.endsWith(".vercel.app") ||
+            r.headers.get("server") === "Vercel");
+        if (onVercel) {
+          throw new Error(
+            "Фронт на Vercel отдаёт только статику: маршрута /api нет (404). " +
+              "Задайте в проекте Vercel переменную VITE_API_BASE_URL=https://URL-вашего-FastAPI (Railway/Render/…), " +
+              "пересоберите деплой. На бэкенде добавьте CORS: домен Vercel или CORS_ORIGIN_REGEX=^https://.*\\.vercel\\.app$",
+          );
+        }
+      }
       let detail = "Неверный логин или пароль";
       try {
         const j = (await r.json()) as {

@@ -120,3 +120,14 @@ OLLAMA_MODEL=llama3.2
 3. **Подкаталог сайта** (`https://host.ru/app/`) — в `frontend/vite.config.ts` задайте `base: '/app/'`, пересоберите фронт; либо укажите полный URL API через `VITE_API_BASE_URL`.
 4. **CORS** — `CORS_ORIGINS=https://точный-url-фронта` (схема и домен как в адресной строке). Превью: `CORS_ORIGIN_REGEX` в `backend/.env.example`.
 5. **HTTPS** — страница по `https://` не может вызывать API по `http://`.
+
+### Vercel (статический фронт)
+
+На Vercel **нет вашего FastAPI**: запрос на `…vercel.app/api/...` даёт **404** от Vercel — это нормально, пока не настроен адрес API.
+
+1. Разверните бэкенд отдельно (Railway, Render, Fly.io, свой VPS + Docker и т.д.) и получите публичный `https://…` к Uvicorn.
+2. В **Vercel → Project → Settings → Environment Variables** добавьте **`VITE_API_BASE_URL`** = базовый URL бэкенда **без** завершающего `/` (например `https://exxssaaee-api.up.railway.app`).
+3. **Redeploy** проекта (переменные `VITE_*` подставляются на этапе `npm run build`).
+4. На бэкенде в `.env`: **`CORS_ORIGINS`** = точный URL фронта на Vercel, либо **`CORS_ORIGIN_REGEX`** = `^https://.*\.vercel\.app$` (для превью-деплоев с разными поддоменами).
+
+Проверка: в Network запрос к логину должен уходить на **хост API**, а не на `*.vercel.app`, если используете `VITE_API_BASE_URL`.
