@@ -4,6 +4,9 @@ WORKDIR /fe
 COPY frontend/package.json ./
 RUN npm install
 COPY frontend/ ./
+# Если фронт на другом домене, чем API: --build-arg VITE_API_BASE_URL=https://api.example.com
+ARG VITE_API_BASE_URL=
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 RUN npm run build
 
 # API + статика

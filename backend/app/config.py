@@ -30,6 +30,8 @@ class Settings(BaseSettings):
         "http://localhost:5173,http://127.0.0.1:5173,"
         "http://localhost:8000,http://127.0.0.1:8000"
     )
+    # Опционально: один regex на Origin (например превью *.vercel.app). См. Starlette CORSMiddleware.allow_origin_regex
+    cors_origin_regex: Optional[str] = None
 
     model_config = SettingsConfigDict(
         env_file=str(_ENV_FILE),
@@ -38,6 +40,16 @@ class Settings(BaseSettings):
         # Пустые значения переменных окружения не подставляются как ""
         env_ignore_empty=True,
     )
+
+    @field_validator("cors_origin_regex", mode="before")
+    @classmethod
+    def _cors_regex_empty(cls, v: object) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        if isinstance(v, str):
+            s = v.strip()
+            return s if s else None
+        return None
 
     @field_validator("openai_api_key", "gemini_api_key", mode="before")
     @classmethod

@@ -8,12 +8,12 @@ import {
   type ReactNode,
 } from "react";
 import type { UserMe } from "./api";
-import { API_BASE, apiGet } from "./api";
+import { apiGet, getApiBase } from "./api";
 
 const LOGIN_UNAVAILABLE =
-  "Сервер API недоступен (нет ответа по сети). Убедитесь, что backend запущен на порту 8000. " +
-  "Если открыли сайт по адресу «localhost» — попробуйте http://127.0.0.1:8000. " +
-  "При работе через Vite (порт 5173) API должен быть запущен отдельно и доступен по прокси.";
+  "Сервер API не отвечает. Локально: порт 8000 и адрес http://127.0.0.1:8000. " +
+  "На деплое: если фронт и API на разных доменах — задайте VITE_API_BASE_URL при сборке или window.__EDDA_API_BASE__; " +
+  "на бэкенде укажите CORS_ORIGINS с точным URL сайта (https://…). HTTPS-страница не может вызывать API по http.";
 
 type AuthState = {
   user: UserMe | null;
@@ -59,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     let r: Response;
     try {
-      r = await fetch(`${API_BASE}/api/auth/login`, {
+      r = await fetch(`${getApiBase()}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),

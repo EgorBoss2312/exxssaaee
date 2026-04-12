@@ -13,6 +13,10 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- На деплое без пересборки: вставьте перед этим скриптом window.__EDDA_API_BASE__ = "https://…"; -->
+    <script>
+      if (typeof window.__EDDA_API_BASE__ === "undefined") window.__EDDA_API_BASE__ = "";
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
