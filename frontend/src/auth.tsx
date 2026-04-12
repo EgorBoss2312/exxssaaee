@@ -8,7 +8,12 @@ import {
   type ReactNode,
 } from "react";
 import type { UserMe } from "./api";
-import { apiGet } from "./api";
+import { API_BASE, apiGet } from "./api";
+
+const LOGIN_UNAVAILABLE =
+  "Сервер API недоступен (нет ответа по сети). Убедитесь, что backend запущен на порту 8000. " +
+  "Если открыли сайт по адресу «localhost» — попробуйте http://127.0.0.1:8000. " +
+  "При работе через Vite (порт 5173) API должен быть запущен отдельно и доступен по прокси.";
 
 type AuthState = {
   user: UserMe | null;
@@ -52,14 +57,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const login = useCallback(async (email: string, password: string) => {
-    const body = new URLSearchParams();
-    body.set("username", email);
-    body.set("password", password);
-    const r = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
+    let r: Response;
+    try {
+      r = await fetch(`${API_BASE}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+    } catch {
+      throw new Error(LOGIN_UNAVAILABLE);
+    }
     if (!r.ok) {
       let detail = "Неверный логин или пароль";
       try {

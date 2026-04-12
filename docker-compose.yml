@@ -24,7 +24,8 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://edda:edda@db:5432/edda
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
-      CORS_ORIGINS: "http://localhost:8000,http://127.0.0.1:8000"
+      # Включить 5173/4173: API в Docker + фронт локально (Vite dev/preview) может ходить к API напрямую
+      CORS_ORIGINS: "http://localhost:8000,http://127.0.0.1:8000,http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173"
       UPLOAD_DIR: /app/data/uploads
       # Опционально LLM (переменные можно задать в .env рядом с compose или export)
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}

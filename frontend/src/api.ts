@@ -1,4 +1,5 @@
-const API = "";
+/** Пустая строка = тот же origin (Uvicorn со статикой) или прокси Vite. Иначе задайте VITE_API_BASE_URL. */
+export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
 function authHeader(): HeadersInit {
   const t = localStorage.getItem("token");
@@ -6,13 +7,13 @@ function authHeader(): HeadersInit {
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
-  const r = await fetch(`${API}${path}`, { headers: { ...authHeader() } });
+  const r = await fetch(`${API_BASE}${path}`, { headers: { ...authHeader() } });
   if (!r.ok) throw new Error(await r.text());
   return r.json() as Promise<T>;
 }
 
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const r = await fetch(`${API}${path}`, {
+  const r = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeader() },
     body: JSON.stringify(body),
@@ -22,7 +23,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
-  const r = await fetch(`${API}${path}`, {
+  const r = await fetch(`${API_BASE}${path}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...authHeader() },
     body: JSON.stringify(body),
@@ -35,7 +36,7 @@ export async function apiUpload(
   path: string,
   form: FormData,
 ): Promise<unknown> {
-  const r = await fetch(`${API}${path}`, {
+  const r = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     headers: { ...authHeader() },
     body: form,
@@ -45,7 +46,7 @@ export async function apiUpload(
 }
 
 export async function apiDelete(path: string): Promise<void> {
-  const r = await fetch(`${API}${path}`, {
+  const r = await fetch(`${API_BASE}${path}`, {
     method: "DELETE",
     headers: { ...authHeader() },
   });
@@ -53,7 +54,7 @@ export async function apiDelete(path: string): Promise<void> {
 }
 
 export async function downloadAuthed(path: string, filename: string): Promise<void> {
-  const r = await fetch(`${API}${path}`, { headers: { ...authHeader() } });
+  const r = await fetch(`${API_BASE}${path}`, { headers: { ...authHeader() } });
   if (!r.ok) throw new Error(await r.text());
   const blob = await r.blob();
   const url = URL.createObjectURL(blob);
