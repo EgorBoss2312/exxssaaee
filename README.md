@@ -21,9 +21,9 @@
 4. Дождаться окончания сборки и деплоя (первый раз может занять **много минут**: Docker, PyTorch).  
 5. Открыть выданный URL вида `https://…onrender.com` → вход: **`admin@edda.local`** / **`Admin123!`**
 
-На бесплатном тарифе сервис «засыпает» — первый запрос после паузы может идти **1–2 минуты**. Подключите **Render PostgreSQL** и задайте **`DATABASE_URL`** в Environment (без отдельной БД приложение не поднимется).
+На бесплатном тарифе сервис «засыпает» — первый запрос после паузы может идти **1–2 минуты**. В **`render.yaml`** заданы **PostgreSQL (`edda-db`)** и автоподстановка **`DATABASE_URL`** из Render; при деплое через Blueprint отдельно создавать БД не обязательно.
 
-**Деплой падает с `Exited with status 3`:** почти всегда нет **`DATABASE_URL`** — в контейнере нет Postgres на `127.0.0.1`. В **Render → ваш Web Service → Environment** добавьте **`DATABASE_URL`** = строка к **Supabase Session pooler** (как локально: `postgresql+psycopg://…?sslmode=require`, только ASCII в пароле) или **Internal Database URL** от Render Postgres (схему замените на `postgresql+psycopg://`). Сохраните → **Manual Deploy**.
+**Деплой падает с `Exited with status 3`:** почти всегда приложение не видит рабочий Postgres (дефолт в коде — `127.0.0.1`, в облаке его нет). **Если деплой без Blueprint** или **`DATABASE_URL` пустой:** в **Render → Web Service → Environment** задайте **`DATABASE_URL`** — **Internal Database URL** своего Render Postgres, **Session pooler Supabase** и т.п. (строки `postgresql://` и `postgres://` приложение само приводит к `postgresql+psycopg://`). Сохраните → **Manual Deploy**. После смены `render.yaml` на версию с блоком **`databases`** сделайте **Apply** у Blueprint ещё раз.
 
 **Лимит 512MB RAM на Free:** загрузка **PyTorch + sentence-transformers** при старте не помещается в память → ошибка вроде `Ran out of memory (used over 512MB)`. В **`render.yaml`** задано **`EDDA_USE_HASH_EMBEDDINGS=1`**: эмбеддинги считаются без ML (качество поиска по смыслу ниже, зато вход и приложение работают). Для полноценного семантического RAG на Render нужен тип инстанса **Standard (2GB)** и **удалите** переменную `EDDA_USE_HASH_EMBEDDINGS` (или поставьте `0`).
 

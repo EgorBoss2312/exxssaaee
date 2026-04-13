@@ -2,8 +2,8 @@
 # Один контейнер: статика + FastAPI на одном https://… (вход без VITE_API_BASE_URL)
 # Первая сборка долгая (PyTorch + модель эмбеддингов при первом запросе)
 #
-# Подключите Render PostgreSQL и задайте в Environment переменную DATABASE_URL
-# (внутренний URL из панели; при необходимости замените схему на postgresql+psycopg://…).
+# PostgreSQL создаётся этим же Blueprint; DATABASE_URL подставляется автоматически.
+# Внешняя БД (Supabase и т.д.): в Dashboard задайте DATABASE_URL вручную (см. README).
 #
 # ВАЖНО — где лежит корень Git:
 # • Репозиторий = только этот проект (в корне лежат Dockerfile, frontend/, backend/ рядом
@@ -22,11 +22,10 @@ services:
     dockerContext: .
     healthCheckPath: /api/health
     envVars:
-      # Обязательно: без DATABASE_URL backend падает на старте (дефолт 127.0.0.1 в контейнере недоступен).
-      # Dashboard → Environment → Add: DATABASE_URL = строка Supabase Session pooler (postgresql+psycopg://…?sslmode=require).
-      # Или подключите Render Postgres и скопируйте Internal Database URL (схему замените на postgresql+psycopg://).
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: edda-db
+          property: connectionString
       - key: JWT_SECRET
         generateValue: true
       - key: PYTHONUNBUFFERED
@@ -35,3 +34,8 @@ services:
       # Псевдо-эмбеддинги (хуже RAG, но вход и приложение работают). Для нормального RAG: plan standard (2GB) и уберите эту переменную.
       - key: EDDA_USE_HASH_EMBEDDINGS
         value: "1"
+
+databases:
+  - name: edda-db
+    region: frankfurt
+    plan: free

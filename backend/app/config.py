@@ -69,6 +69,25 @@ class Settings(BaseSettings):
         env_ignore_empty=True,
     )
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _normalize_database_url(cls, v: object) -> object:
+        """Render/Supabase часто отдают postgresql:// или postgres://; драйвер в проекте — psycopg v3."""
+        if not isinstance(v, str):
+            return v
+        s = v.strip()
+        if not s or "://" not in s:
+            return v
+        scheme, rest = s.split("://", 1)
+        if "+" in scheme:
+            return s
+        low = scheme.lower()
+        if low == "postgres":
+            return f"postgresql+psycopg://{rest}"
+        if low == "postgresql":
+            return f"postgresql+psycopg://{rest}"
+        return s
+
     @field_validator("cors_origin_regex", mode="before")
     @classmethod
     def _cors_regex_empty(cls, v: object) -> Optional[str]:
