@@ -1,5 +1,4 @@
-# Полный стек на одном хосте: FastAPI + встроенная статика Vite (см. Dockerfile).
-# БД по умолчанию — SQLite в томе /app/data (без отдельного Postgres).
+# Полный стек: FastAPI + статика Vite + PostgreSQL (pgvector).
 #
 # Запуск: из каталога edda-portal
 #   export JWT_SECRET="$(openssl rand -hex 32)"
@@ -10,6 +9,22 @@
 # или в environment ниже.
 
 services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: edda
+      POSTGRES_PASSWORD: edda
+      POSTGRES_DB: edda
+    volumes:
+      - edda_pg:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U edda -d edda"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   web:
     build:
       context: .
@@ -18,14 +33,20 @@ services:
       - "8000:8000"
     environment:
       PYTHONUNBUFFERED: "1"
+      DATABASE_URL: postgresql+psycopg://edda:edda@db:5432/edda
       JWT_SECRET: ${JWT_SECRET:-change-me-set-JWT_SECRET-in-production}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
       CORS_ORIGIN_REGEX: ${CORS_ORIGIN_REGEX:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      UPLOAD_DIR: /app/data/uploads
     volumes:
-      - edda_app_data:/app/data
+      - edda_uploads:/app/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
-  edda_app_data:
+  edda_pg:
+  edda_uploads:

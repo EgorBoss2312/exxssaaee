@@ -88,7 +88,7 @@ class Chunk(Base):
     document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    # JSON-массив чисел; поиск по косинусу в Python (SQLite/Postgres без pgvector)
+    # JSON-массив чисел; поиск по косинусу в Python (колонка vector в pgvector не используется)
     embedding: Mapped[list[float]] = mapped_column(JSON, nullable=False)
 
     document: Mapped["Document"] = relationship(back_populates="chunks")

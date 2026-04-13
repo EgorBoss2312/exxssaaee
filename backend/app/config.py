@@ -9,8 +9,9 @@ _BACKEND_ROOT = Path(__file__).resolve().parent.parent
 # Корень backend (в Docker WORKDIR это /app) — для относительных путей к uploads
 BACKEND_ROOT = _BACKEND_ROOT
 _ENV_FILE = _BACKEND_ROOT / ".env"
-# Абсолютный путь: можно запускать uvicorn из любой директории
-_DEFAULT_SQLITE = f"sqlite:///{(_BACKEND_ROOT / 'data' / 'app.db').as_posix()}"
+# Локальная разработка: совпадает с `docker compose up` (сервис db на порту 5432).
+# На PaaS задайте DATABASE_URL из панели (managed PostgreSQL).
+_DEFAULT_POSTGRES = "postgresql+psycopg://edda:edda@127.0.0.1:5432/edda"
 
 
 def _origins_from_paas_env() -> list[str]:
@@ -38,8 +39,8 @@ def _origins_from_paas_env() -> list[str]:
 
 
 class Settings(BaseSettings):
-    # По умолчанию — SQLite (без Docker и без PostgreSQL)
-    database_url: str = _DEFAULT_SQLITE
+    # PostgreSQL (драйвер psycopg v3). Переопределение через DATABASE_URL.
+    database_url: str = _DEFAULT_POSTGRES
     jwt_secret: str = "change-me-in-production-use-long-random-string"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7

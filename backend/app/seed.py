@@ -1,6 +1,8 @@
+import logging
 import os
 from pathlib import Path
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.auth_core import hash_password
@@ -151,6 +153,16 @@ def seed_if_empty(db: Session) -> None:
     db.commit()
 
 
+_log = logging.getLogger(__name__)
+
+
 def init_extensions(engine) -> None:
-    """Расширения СУБД (раньше — pgvector). Сейчас эмбеддинги в JSON, вызов оставлен для совместимости."""
-    _ = engine
+    """Включает расширение pgvector (образ БД из docker-compose). Эмбеддинги хранятся в JSON."""
+    if engine.dialect.name != "postgresql":
+        return
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            conn.commit()
+    except Exception as exc:
+        _log.warning("Не удалось выполнить CREATE EXTENSION vector: %s", exc)

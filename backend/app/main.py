@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -57,8 +56,6 @@ def _startup():
         bool(settings.cors_origin_regex),
     )
     os.makedirs(settings.upload_dir, exist_ok=True)
-    if "sqlite" in settings.database_url:
-        (Path(__file__).resolve().parent.parent / "data").mkdir(parents=True, exist_ok=True)
     init_extensions(engine)
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()

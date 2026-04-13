@@ -1,5 +1,6 @@
 # Railway: New Project → Deploy from GitHub; билдер подхватит Dockerfile из корня.
-# Variables: JWT_SECRET (обязательно в проде); при своём домене — CORS_ORIGINS=https://…
+# Подключите PostgreSQL (Railway Postgres) и задайте DATABASE_URL; JWT_SECRET обязателен в проде;
+# при своём домене — CORS_ORIGINS=https://…
 # Проверка: GET /api/health
 
 [build]
