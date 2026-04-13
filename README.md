@@ -23,6 +23,8 @@
 
 На бесплатном тарифе сервис «засыпает» — первый запрос после паузы может идти **1–2 минуты**. Подключите **Render PostgreSQL** и задайте **`DATABASE_URL`** в Environment (без отдельной БД приложение не поднимется).
 
+**Деплой падает с `Exited with status 3`:** почти всегда нет **`DATABASE_URL`** — в контейнере нет Postgres на `127.0.0.1`. В **Render → ваш Web Service → Environment** добавьте **`DATABASE_URL`** = строка к **Supabase Session pooler** (как локально: `postgresql+psycopg://…?sslmode=require`, только ASCII в пароле) или **Internal Database URL** от Render Postgres (схему замените на `postgresql+psycopg://`). Сохраните → **Manual Deploy**.
+
 **Лимит 512MB RAM на Free:** загрузка **PyTorch + sentence-transformers** при старте не помещается в память → ошибка вроде `Ran out of memory (used over 512MB)`. В **`render.yaml`** задано **`EDDA_USE_HASH_EMBEDDINGS=1`**: эмбеддинги считаются без ML (качество поиска по смыслу ниже, зато вход и приложение работают). Для полноценного семантического RAG на Render нужен тип инстанса **Standard (2GB)** и **удалите** переменную `EDDA_USE_HASH_EMBEDDINGS` (или поставьте `0`).
 
 **Жёлтая плашка «без LLM» на деплое:** в панели Render → **Environment** добавьте **`GEMINI_API_KEY`** (или **`OPENAI_API_KEY`**) и сделайте redeploy. Локальный `backend/.env` на сервер не подставляется.

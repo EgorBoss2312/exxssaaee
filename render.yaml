@@ -22,6 +22,11 @@ services:
     dockerContext: .
     healthCheckPath: /api/health
     envVars:
+      # Обязательно: без DATABASE_URL backend падает на старте (дефолт 127.0.0.1 в контейнере недоступен).
+      # Dashboard → Environment → Add: DATABASE_URL = строка Supabase Session pooler (postgresql+psycopg://…?sslmode=require).
+      # Или подключите Render Postgres и скопируйте Internal Database URL (схему замените на postgresql+psycopg://).
+      - key: DATABASE_URL
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: PYTHONUNBUFFERED
