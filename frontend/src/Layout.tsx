@@ -21,7 +21,11 @@ export default function Layout() {
     <>
       <div className="app-shell">
         <header className="topnav">
-          <div className="brand">ООО «ЭДДА» · база знаний</div>
+          <div className="brand">
+            <span className="brand-company">ООО «ЭДДА»</span>
+            <span className="brand-sep" aria-hidden="true" />
+            <span className="brand-product">база знаний</span>
+          </div>
           <nav className="nav-links">
             <NavLink end className={({ isActive }) => (isActive ? "active" : "")} to="/">
               Чат

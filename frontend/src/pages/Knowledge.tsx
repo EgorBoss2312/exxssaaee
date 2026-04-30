@@ -101,10 +101,10 @@ export default function Knowledge() {
               </button>
             </div>
             <pre
+              className="muted"
               style={{
                 whiteSpace: "pre-wrap",
                 fontSize: "0.9rem",
-                color: "#cbd5e1",
                 marginTop: "0.75rem",
               }}
             >

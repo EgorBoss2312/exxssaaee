@@ -27,26 +27,31 @@ export default function Login() {
   }
 
   return (
-    <div className="app-shell" style={{ maxWidth: 440 }}>
-      <div className="card">
+    <div className="login-page">
+      <div className="login-card card card--login">
+        <div className="login-badge" aria-hidden="true">
+          Э
+        </div>
         <h1>Вход</h1>
-        <p className="muted">
+        <p className="muted login-lead">
           Корпоративная база знаний ООО «ЭДДА». Используйте учётную запись,
           выданную администратором.
         </p>
-        <form onSubmit={onSubmit}>
-          <div style={{ marginBottom: "0.65rem" }}>
-            <label className="muted">Email</label>
+        <form onSubmit={onSubmit} className="login-form">
+          <div className="field">
+            <label htmlFor="login-email">Email</label>
             <input
+              id="login-email"
               className="input"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="username"
             />
           </div>
-          <div style={{ marginBottom: "0.65rem" }}>
-            <label className="muted">Пароль</label>
+          <div className="field">
+            <label htmlFor="login-password">Пароль</label>
             <input
+              id="login-password"
               className="input"
               type="password"
               value={password}
@@ -55,13 +60,12 @@ export default function Login() {
             />
           </div>
           {err && <div className="err">{err}</div>}
-          <button className="btn" type="submit" disabled={busy || loading} style={{ marginTop: "0.75rem" }}>
+          <button className="btn btn-block" type="submit" disabled={busy || loading}>
             {busy ? "Вход…" : "Войти"}
           </button>
         </form>
-        <p className="muted" style={{ marginTop: "1rem" }}>
-          Демо после первого запуска Docker: <code>admin@edda.local</code> /{" "}
-          <code>Admin123!</code>
+        <p className="muted login-hint">
+          Демо после первого запуска Docker: <code>admin@edda.local</code> / <code>Admin123!</code>
         </p>
       </div>
     </div>

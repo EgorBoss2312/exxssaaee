@@ -19,9 +19,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY backend/requirements.txt .
+# CPU-колёса PyTorch: суффикс +cpu есть не у всех линий; 2.5.1+cpu на индексе может отсутствовать (см. вывод pip).
 RUN pip install --no-cache-dir \
     --index-url https://download.pytorch.org/whl/cpu \
-    torch==2.5.1+cpu
+    torch==2.5.1
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/app ./app

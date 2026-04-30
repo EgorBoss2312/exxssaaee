@@ -1,3 +1,4 @@
+import os
 from typing import Annotated
 
 import httpx
@@ -40,11 +41,20 @@ def llm_status(_: Annotated[User, Depends(get_current_user)]) -> LlmStatusOut:
             return LlmStatusOut(mode="ollama", model=settings.ollama_model)
     except Exception:
         pass
-    return LlmStatusOut(
-        mode="extractive",
-        hint=(
-            "Локально: в backend/.env задайте GEMINI_API_KEY или OPENAI_API_KEY и перезапустите сервер. "
-            "На Render/Railway: Environment → добавьте ту же переменную (без кавычек), redeploy. "
-            f"Либо Ollama по адресу {base} и ollama pull {settings.ollama_model}"
-        ),
+    return LlmStatusOut(mode="extractive", hint=_extractive_hint(settings, base))
+
+
+def _extractive_hint(settings, ollama_base: str) -> str:
+    """Короткая подсказка для UI; детали — в README."""
+    if os.environ.get("RENDER", "").strip():
+        return (
+            "Связный ответ: в Render → Environment добавьте GEMINI_API_KEY или OPENAI_API_KEY (без кавычек) → Save → Deploy."
+        )
+    if os.environ.get("RAILWAY_ENVIRONMENT", "").strip() or os.environ.get("RAILWAY_PROJECT_ID", "").strip():
+        return (
+            "Связный ответ: в Railway → Variables задайте GEMINI_API_KEY или OPENAI_API_KEY → redeploy."
+        )
+    return (
+        "Связный ответ: в backend/.env укажите GEMINI_API_KEY или OPENAI_API_KEY и перезапустите сервер; "
+        f"либо Ollama ({ollama_base}) и модель «{settings.ollama_model}». Подробнее — README."
     )

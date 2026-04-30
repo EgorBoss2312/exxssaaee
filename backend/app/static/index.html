@@ -3,6 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- База URL API на деплое без пересборки (пусто = тот же сайт / VITE_API_BASE_URL): -->
+    <meta name="edda-api-base" content="" />
     <title>ЭДДА — база знаний</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -10,10 +12,14 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/index-DIyssQqN.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DUtr6zHt.css">
+    <script type="module" crossorigin src="/assets/index-BEmrkhjU.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DFoUu-79.css">
   </head>
   <body>
     <div id="root"></div>
+    <!-- На деплое без пересборки: вставьте перед этим скриптом window.__EDDA_API_BASE__ = "https://…"; -->
+    <script>
+      if (typeof window.__EDDA_API_BASE__ === "undefined") window.__EDDA_API_BASE__ = "";
+    </script>
   </body>
 </html>
