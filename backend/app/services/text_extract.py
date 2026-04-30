@@ -4,7 +4,28 @@ import io
 from pathlib import Path
 
 from docx import Document as DocxDocument
+from docx.oxml.ns import qn
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 from pypdf import PdfReader
+
+
+def _docx_body_text(doc: DocxDocument) -> str:
+    """Параграфы и ячейки таблиц в порядке следования в теле (не только doc.paragraphs)."""
+    parts: list[str] = []
+    for child in doc.element.body.iterchildren():
+        if child.tag == qn("w:p"):
+            p = Paragraph(child, doc)
+            if p.text.strip():
+                parts.append(p.text)
+        elif child.tag == qn("w:tbl"):
+            tbl = Table(child, doc)
+            for row in tbl.rows:
+                for cell in row.cells:
+                    for cp in cell.paragraphs:
+                        if cp.text.strip():
+                            parts.append(cp.text)
+    return "\n".join(parts).strip()
 
 
 def extract_text_from_file(path: Path, mime: str | None) -> str:
@@ -33,7 +54,7 @@ def _pdf_text(path: Path) -> str:
 
 def _docx_text(path: Path) -> str:
     doc = DocxDocument(str(path))
-    return "\n".join(p.text for p in doc.paragraphs if p.text).strip()
+    return _docx_body_text(doc)
 
 
 def extract_text_from_bytes(data: bytes, filename: str) -> str:
@@ -46,5 +67,5 @@ def extract_text_from_bytes(data: bytes, filename: str) -> str:
         return "\n\n".join(parts).strip()
     if suffix == ".docx":
         doc = DocxDocument(io.BytesIO(data))
-        return "\n".join(p.text for p in doc.paragraphs if p.text).strip()
+        return _docx_body_text(doc)
     return data.decode("utf-8", errors="replace")
