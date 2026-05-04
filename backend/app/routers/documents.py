@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select
@@ -17,6 +17,7 @@ from app.database import get_db
 from app.deps import get_current_user, require_kb_manager
 from app.models import Document, Role, User, document_roles
 from app.schemas import DocumentOut
+from app.services.audit import write_audit
 from app.services.ingest import attach_roles, reindex_document
 from app.storage_paths import normalize_storage_path, resolve_storage_path
 
@@ -109,6 +110,7 @@ def download_file(
 
 @router.post("", response_model=DocumentOut)
 async def upload_document(
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(require_kb_manager)],
     title: str = Form(...),
@@ -145,6 +147,21 @@ async def upload_document(
     db.refresh(doc)
 
     reindex_document(db, doc)
+
+    write_audit(
+        db,
+        actor_id=user.id,
+        action="document_upload",
+        object_type="document",
+        object_id=doc.id,
+        details={
+            "title": doc.title,
+            "filename": doc.original_filename,
+            "role_ids": ids,
+        },
+        request=request,
+    )
+
     db.commit()
     db.refresh(doc)
     return _doc_to_out(doc)
@@ -153,6 +170,7 @@ async def upload_document(
 @router.delete("/{doc_id}")
 def delete_document(
     doc_id: int,
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(require_kb_manager)],
 ):
@@ -160,6 +178,17 @@ def delete_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Не найдено")
     path = resolve_storage_path(doc.storage_path)
+
+    write_audit(
+        db,
+        actor_id=user.id,
+        action="document_delete",
+        object_type="document",
+        object_id=doc.id,
+        details={"title": doc.title, "filename": doc.original_filename},
+        request=request,
+    )
+
     db.delete(doc)
     db.commit()
     try:

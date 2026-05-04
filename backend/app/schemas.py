@@ -89,6 +89,13 @@ class ChatResponse(BaseModel):
     answer: str
     sources: list[SourceRef]
     session_id: int
+    rag_query_id: Optional[int] = None
+
+
+class FeedbackRequest(BaseModel):
+    rag_query_id: int
+    is_helpful: bool
+    comment: Optional[str] = Field(None, max_length=2000)
 
 
 class AdminUserCreate(BaseModel):

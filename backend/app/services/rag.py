@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any
 
 import numpy as np
@@ -148,6 +149,7 @@ def retrieve_chunks(
                 "title": titles.get(did, "?"),
                 "excerpt": ch.content[:1200],
                 "doc_id": did,
+                "chunk_id": ch.id,
                 "chunk_index": ch.chunk_index,
             }
         )
@@ -155,8 +157,31 @@ def retrieve_chunks(
     return blocks, scores
 
 
-async def answer_question(db: Session, user: User, question: str) -> tuple[str, list[dict[str, Any]]]:
-    blocks, _ = retrieve_chunks(db, user, question, top_k=5)
+def _detect_llm_provider(settings) -> str:
+    """Определяет, какой провайдер LLM фактически активен (по приоритету в llm.py)."""
+    if (settings.gemini_api_key or "").strip():
+        return "gemini"
+    if (settings.openai_api_key or "").strip():
+        return "openai"
+    if (settings.ollama_base_url or "").strip():
+        return "ollama"
+    return "extractive"
+
+
+async def answer_question(
+    db: Session, user: User, question: str, *, top_k: int = 5
+) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
+    """Возвращает (answer, sources_for_response, meta_for_journal).
+
+    meta_for_journal содержит данные для журналирования в rag_queries / query_sources:
+        - chunks_used: list[{chunk_id, score, rank, document_id}]
+        - top_k, latency_ms, used_llm, llm_provider, llm_model, embedding_model_code
+    """
+    settings = get_settings()
+    started = time.monotonic()
+
+    blocks, scores = retrieve_chunks(db, user, question, top_k=top_k)
+
     sources = [
         {
             "document_id": b["doc_id"],
@@ -166,11 +191,45 @@ async def answer_question(db: Session, user: User, question: str) -> tuple[str, 
         }
         for b in blocks
     ]
+
+    provider = _detect_llm_provider(settings)
+    llm_model = {
+        "gemini": settings.gemini_model,
+        "openai": settings.openai_model,
+        "ollama": settings.ollama_model,
+        "extractive": None,
+    }.get(provider)
+
     answer = await generate_rag_answer(
         question,
-        [{"title": b["title"], "excerpt": b["excerpt"], "doc_id": b["doc_id"], "chunk_index": b["chunk_index"]} for b in blocks],
+        [{"title": b["title"], "excerpt": b["excerpt"],
+          "doc_id": b["doc_id"], "chunk_index": b["chunk_index"]}
+         for b in blocks],
     )
-    return answer, sources
+
+    latency_ms = int((time.monotonic() - started) * 1000)
+
+    chunks_used = [
+        {
+            "chunk_id": b["chunk_id"],
+            "document_id": b["doc_id"],
+            "rank": rank + 1,
+            "score": float(scores[rank]) if rank < len(scores) else None,
+        }
+        for rank, b in enumerate(blocks)
+    ]
+
+    meta = {
+        "chunks_used": chunks_used,
+        "top_k": top_k,
+        "latency_ms": latency_ms,
+        "used_llm": provider != "extractive",
+        "llm_provider": provider,
+        "llm_model": llm_model,
+        "embedding_model_code": settings.embedding_model,
+    }
+
+    return answer, sources, meta
 
 
 def sources_to_json(sources: list[dict[str, Any]]) -> str:

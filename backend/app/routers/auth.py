@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.auth_core import authenticate_user, create_access_token
@@ -8,16 +8,35 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models import User
 from app.schemas import LoginRequest, Token, UserOut
+from app.services.audit import write_audit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=Token)
-def login(body: LoginRequest, db: Session = Depends(get_db)):
+def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
     user = authenticate_user(db, body.email, body.password)
     if not user:
+        write_audit(
+            db,
+            actor_id=None,
+            action="login_failed",
+            object_type="user",
+            details={"email": body.email},
+            request=request,
+            commit=True,
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный email или пароль")
     token = create_access_token(sub=user.email, user_id=user.id, role_id=user.role_id)
+    write_audit(
+        db,
+        actor_id=user.id,
+        action="login_success",
+        object_type="user",
+        object_id=user.id,
+        request=request,
+        commit=True,
+    )
     return Token(access_token=token)
 
 
