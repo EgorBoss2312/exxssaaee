@@ -166,3 +166,45 @@ def init_extensions(engine) -> None:
             conn.commit()
     except Exception as exc:
         _log.warning("Не удалось выполнить CREATE EXTENSION vector: %s", exc)
+
+
+def _migrations_dir() -> Path | None:
+    """Расположение SQL-миграций. В Docker — /app/migrations, локально — backend/migrations."""
+    candidates = [
+        Path("/app/migrations"),
+        BACKEND_ROOT / "migrations",
+        Path(__file__).resolve().parent.parent / "migrations",
+    ]
+    for p in candidates:
+        if p.is_dir():
+            return p
+    return None
+
+
+def apply_sql_migrations(engine, filenames: list[str]) -> None:
+    """Применяет идемпотентные SQL-миграции (CREATE/ALTER ... IF NOT EXISTS, ON CONFLICT DO NOTHING).
+
+    Нужно потому, что Base.metadata.create_all() не добавляет колонки в уже существующие таблицы:
+    после расширения схемы (миграция 002) в БД на Render отсутствовала колонка users.department_id,
+    из-за чего падал запрос db.query(User).count() на старте приложения.
+    """
+    if engine.dialect.name != "postgresql":
+        return
+    mdir = _migrations_dir()
+    if mdir is None:
+        _log.warning("Папка с SQL-миграциями не найдена; пропускаю apply_sql_migrations")
+        return
+    for fname in filenames:
+        path = mdir / fname
+        if not path.is_file():
+            _log.warning("SQL-миграция не найдена: %s", path)
+            continue
+        sql = path.read_text(encoding="utf-8")
+        try:
+            # AUTOCOMMIT: BEGIN/COMMIT уже есть внутри SQL-скрипта, своя транзакция SQLAlchemy не нужна.
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                conn.exec_driver_sql(sql)
+            _log.info("SQL-миграция применена: %s", fname)
+        except Exception as exc:
+            _log.error("Ошибка применения SQL-миграции %s: %s", fname, exc)
+            raise

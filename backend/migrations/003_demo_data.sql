@@ -60,7 +60,7 @@ UNION ALL
 SELECT d.id, t.tag_id
   FROM ranked_docs d
   JOIN secondary_tag t
-    ON ((d.rn - 1) % 6) + 1 = t.rn
+    ON mod((d.rn - 1), 6) + 1 = t.rn
  WHERE d.rn <= 12
 ON CONFLICT (document_id, tag_id) DO NOTHING;
 

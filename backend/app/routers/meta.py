@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.deps import get_current_user
-from app.models import Role, User
-from app.schemas import LlmStatusOut, RoleOut
+from app.models import DocumentTag, Role, User
+from app.schemas import DocumentTagOut, LlmStatusOut, RoleOut
 
 router = APIRouter(prefix="/meta", tags=["meta"])
 
@@ -21,6 +21,15 @@ def list_roles_for_ui(
 ):
     """Список ролей для форм (загрузка документов, отображение)."""
     return db.query(Role).order_by(Role.id.asc()).all()
+
+
+@router.get("/document-tags", response_model=list[DocumentTagOut])
+def list_document_tags_for_ui(
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_user)],
+):
+    """Справочник тегов документов для формы загрузки и отображения."""
+    return db.query(DocumentTag).order_by(DocumentTag.name.asc()).all()
 
 
 @router.get("/llm", response_model=LlmStatusOut)

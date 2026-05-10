@@ -15,8 +15,8 @@ from sqlalchemy import select
 from app.config import BACKEND_ROOT, get_settings
 from app.database import get_db
 from app.deps import get_current_user, require_kb_manager
-from app.models import Document, Role, User, document_roles
-from app.schemas import DocumentOut
+from app.models import Document, DocumentTag, Role, User, document_roles
+from app.schemas import DocumentOut, DocumentTagOut
 from app.services.audit import write_audit
 from app.services.ingest import attach_roles, reindex_document
 from app.storage_paths import normalize_storage_path, resolve_storage_path
@@ -27,6 +27,10 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 def _doc_to_out(doc: Document) -> DocumentOut:
     names = [r.code for r in doc.allowed_roles]
     uploader = doc.uploaded_by_user.full_name if doc.uploaded_by_user else None
+    tag_out = [
+        DocumentTagOut(id=t.id, code=t.code, name=t.name, color=t.color)
+        for t in (doc.tags or [])
+    ]
     return DocumentOut(
         id=doc.id,
         title=doc.title,
@@ -35,6 +39,7 @@ def _doc_to_out(doc: Document) -> DocumentOut:
         created_at=doc.created_at,
         uploaded_by_name=uploader,
         allowed_role_codes=names,
+        tags=tag_out,
     )
 
 
@@ -53,7 +58,11 @@ def list_documents(
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ):
-    docs = _list_query(db, user).options(joinedload(Document.allowed_roles)).all()
+    docs = (
+        _list_query(db, user)
+        .options(joinedload(Document.allowed_roles), joinedload(Document.tags))
+        .all()
+    )
     return [_doc_to_out(d) for d in docs]
 
 
@@ -63,7 +72,12 @@ def get_document(
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ):
-    doc = db.query(Document).filter(Document.id == doc_id).first()
+    doc = (
+        db.query(Document)
+        .options(joinedload(Document.allowed_roles), joinedload(Document.tags))
+        .filter(Document.id == doc_id)
+        .first()
+    )
     if not doc:
         raise HTTPException(status_code=404, detail="Документ не найден")
     if user.role.code != "admin":
@@ -116,6 +130,7 @@ async def upload_document(
     title: str = Form(...),
     allowed_role_ids: str = Form(...),
     file: UploadFile = File(...),
+    tag_ids: str = Form("[]"),
 ):
     try:
         ids: list[int] = json.loads(allowed_role_ids)
@@ -123,6 +138,18 @@ async def upload_document(
             raise ValueError("role ids")
     except Exception:
         raise HTTPException(status_code=400, detail="allowed_role_ids должен быть JSON-массивом целых чисел")
+
+    try:
+        raw_tag_ids = json.loads(tag_ids)
+        if not isinstance(raw_tag_ids, list):
+            raise ValueError("tag ids not a list")
+        tag_id_list: list[int] = []
+        for x in raw_tag_ids:
+            if type(x) is not int:
+                raise ValueError("tag id must be int")
+            tag_id_list.append(x)
+    except Exception:
+        raise HTTPException(status_code=400, detail="tag_ids должен быть JSON-массивом целых чисел (id тегов)")
 
     settings = get_settings()
     os.makedirs(settings.upload_dir, exist_ok=True)
@@ -144,6 +171,18 @@ async def upload_document(
     db.flush()
 
     attach_roles(db, doc, ids)
+
+    if tag_id_list:
+        tags = db.query(DocumentTag).filter(DocumentTag.id.in_(tag_id_list)).all()
+        found = {t.id for t in tags}
+        missing = set(tag_id_list) - found
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Неизвестные id тегов: {sorted(missing)}",
+            )
+        doc.tags = tags
+
     db.refresh(doc)
 
     reindex_document(db, doc)
@@ -158,12 +197,19 @@ async def upload_document(
             "title": doc.title,
             "filename": doc.original_filename,
             "role_ids": ids,
+            "tag_ids": tag_id_list,
         },
         request=request,
     )
 
     db.commit()
-    db.refresh(doc)
+    doc = (
+        db.query(Document)
+        .options(joinedload(Document.allowed_roles), joinedload(Document.tags))
+        .filter(Document.id == doc.id)
+        .first()
+    )
+    assert doc is not None
     return _doc_to_out(doc)
 
 

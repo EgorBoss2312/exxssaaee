@@ -1,15 +1,33 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { apiGet, apiUpload, type Role } from "../api";
+import { apiGet, apiUpload, type DocumentTag, type Role } from "../api";
 import { useAuth } from "../auth";
+
+function initRoleChecks(r: Role[]): Record<number, boolean> {
+  const a: Record<number, boolean> = {};
+  r.forEach((x) => {
+    if (x.code !== "admin") a[x.id] = false;
+  });
+  return a;
+}
+
+function initTagChecks(tags: DocumentTag[]): Record<number, boolean> {
+  const a: Record<number, boolean> = {};
+  tags.forEach((t) => {
+    a[t.id] = false;
+  });
+  return a;
+}
 
 export default function Upload() {
   const { user } = useAuth();
   const [roles, setRoles] = useState<Role[]>([]);
+  const [docTags, setDocTags] = useState<DocumentTag[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [docTitle, setDocTitle] = useState("");
   const [allowed, setAllowed] = useState<Record<number, boolean>>({});
+  const [tagPick, setTagPick] = useState<Record<number, boolean>>({});
 
   const can = user && (user.role_code === "admin" || user.role_code === "it");
 
@@ -17,15 +35,16 @@ export default function Upload() {
     if (!can) return;
     void (async () => {
       try {
-        const r = await apiGet<Role[]>("/api/meta/roles");
+        const [r, tg] = await Promise.all([
+          apiGet<Role[]>("/api/meta/roles"),
+          apiGet<DocumentTag[]>("/api/meta/document-tags"),
+        ]);
         setRoles(r);
-        const a: Record<number, boolean> = {};
-        r.forEach((x) => {
-          if (x.code !== "admin") a[x.id] = false;
-        });
-        setAllowed(a);
+        setAllowed(initRoleChecks(r));
+        setDocTags(tg);
+        setTagPick(initTagChecks(tg));
       } catch {
-        setErr("Не удалось загрузить список ролей");
+        setErr("Не удалось загрузить списки ролей и тегов");
       }
     })();
   }, [can]);
@@ -44,15 +63,21 @@ export default function Upload() {
       return;
     }
     setErr(null);
+    const tagIds = Object.entries(tagPick)
+      .filter(([, v]) => v)
+      .map(([k]) => Number(k));
+
     const fd = new FormData();
     fd.append("title", docTitle.trim());
     fd.append("allowed_role_ids", JSON.stringify(ids));
+    fd.append("tag_ids", JSON.stringify(tagIds));
     fd.append("file", file);
     try {
       await apiUpload("/api/documents", fd);
       setFile(null);
       setDocTitle("");
-      setAllowed({});
+      setAllowed(initRoleChecks(roles));
+      setTagPick(initTagChecks(docTags));
       alert("Документ загружен и проиндексирован.");
     } catch (ex) {
       setErr(String(ex));
@@ -103,6 +128,43 @@ export default function Upload() {
               Администратор всегда видит все документы.
             </p>
           </div>
+          {docTags.length > 0 && (
+            <div style={{ marginBottom: "0.65rem" }}>
+              <label className="muted">Теги документа (необязательно)</label>
+              <div className="checkbox-grid">
+                {docTags.map((t) => (
+                  <label key={t.id}>
+                    <input
+                      type="checkbox"
+                      checked={!!tagPick[t.id]}
+                      onChange={(e) =>
+                        setTagPick((prev) => ({ ...prev, [t.id]: e.target.checked }))
+                      }
+                    />
+                    <span
+                      className="tag-chip tag-chip-inline"
+                      style={
+                        t.color
+                          ? {
+                              backgroundColor: t.color,
+                              color: "#0f172a",
+                              borderColor: t.color,
+                            }
+                          : undefined
+                      }
+                    >
+                      {t.name}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          {docTags.length === 0 && (
+            <p className="muted" style={{ marginBottom: "0.65rem" }}>
+              Справочник тегов пуст. После применения миграции БД и сидов теги появятся здесь.
+            </p>
+          )}
           <button className="btn" type="submit">
             Загрузить и проиндексировать
           </button>

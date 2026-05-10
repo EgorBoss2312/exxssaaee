@@ -48,12 +48,40 @@ export default function Knowledge() {
                 {new Date(d.created_at).toLocaleString("ru-RU")}
               </div>
               <div style={{ marginTop: "0.35rem" }}>
+                <span className="muted" style={{ fontSize: "0.75rem", marginRight: "0.35rem" }}>
+                  Роли:
+                </span>
                 {d.allowed_role_codes.map((c) => (
                   <span key={c} className="badge">
                     {c}
                   </span>
                 ))}
               </div>
+              {(d.tags ?? []).length > 0 && (
+                <div style={{ marginTop: "0.35rem" }}>
+                  <span className="muted" style={{ fontSize: "0.75rem", marginRight: "0.35rem" }}>
+                    Теги:
+                  </span>
+                  {(d.tags ?? []).map((t) => (
+                    <span
+                      key={t.id}
+                      className="tag-chip"
+                      title={t.code}
+                      style={
+                        t.color
+                          ? {
+                              backgroundColor: t.color,
+                              color: "#0f172a",
+                              borderColor: t.color,
+                            }
+                          : undefined
+                      }
+                    >
+                      {t.name}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="row">
               <button type="button" className="btn btn-ghost" onClick={() => openPreview(d.id, d.title)}>

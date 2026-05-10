@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.database import SessionLocal, engine, Base
 from app.routers import admin, auth, chat, documents, meta
-from app.seed import init_extensions, seed_if_empty
+from app.seed import apply_sql_migrations, init_extensions, seed_if_empty
 
 settings = get_settings()
 _log = logging.getLogger(__name__)
@@ -43,6 +43,14 @@ app.add_middleware(
 app.mount("/api", api_app)
 
 
+def _is_paas_env() -> bool:
+    """Render/Railway/Fly выставляют свои маркеры — используем их, чтобы отличить локальный запуск от прод."""
+    return any(
+        os.environ.get(k)
+        for k in ("RENDER", "RENDER_SERVICE_ID", "RAILWAY_ENVIRONMENT", "FLY_APP_NAME")
+    )
+
+
 @app.on_event("startup")
 def _startup():
     if os.environ.get("EDDA_USE_HASH_EMBEDDINGS", "").strip().lower() in ("1", "true", "yes"):
@@ -55,14 +63,29 @@ def _startup():
         len(settings.cors_origins_list),
         bool(settings.cors_origin_regex),
     )
+    # Fail-fast: в облаке без DATABASE_URL подставится дефолт 127.0.0.1:5432 → длинный
+    # стек "Connection refused". Лучше сразу выдать понятное сообщение.
+    raw_db_url = os.environ.get("DATABASE_URL", "").strip()
+    if _is_paas_env() and not raw_db_url:
+        raise RuntimeError(
+            "DATABASE_URL не задан. На Render: Dashboard → ваш Postgres (например edda-db) → "
+            "Connect → скопировать Internal Database URL → в сервисе edda-portal-* → "
+            "Environment → добавить переменную DATABASE_URL и сделать Manual Deploy."
+        )
     os.makedirs(settings.upload_dir, exist_ok=True)
     init_extensions(engine)
+    # Сначала идемпотентная схема-миграция (добавляет недостающие колонки и таблицы
+    # в уже существующих БД — например users.department_id, documents.category_id),
+    # потом create_all для полноты, потом seed.
+    apply_sql_migrations(engine, ["002_extended_schema.sql"])
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         seed_if_empty(db)
     finally:
         db.close()
+    # Демо-данные расширенных таблиц (тэги/версии) — после seed, когда документы уже созданы.
+    apply_sql_migrations(engine, ["003_demo_data.sql"])
 
 
 # --- SPA static (production / docker): set FRONTEND_DIST to built Vite `dist` folder ---

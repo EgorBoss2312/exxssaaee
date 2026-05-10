@@ -52,6 +52,16 @@ class LlmStatusOut(BaseModel):
     hint: Optional[str] = None
 
 
+class DocumentTagOut(BaseModel):
+    id: int
+    code: str
+    name: str
+    color: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class DocumentOut(BaseModel):
     id: int
     title: str
@@ -60,6 +70,7 @@ class DocumentOut(BaseModel):
     created_at: datetime
     uploaded_by_name: Optional[str] = None
     allowed_role_codes: list[str] = []
+    tags: list[DocumentTagOut] = []
 
     class Config:
         from_attributes = True

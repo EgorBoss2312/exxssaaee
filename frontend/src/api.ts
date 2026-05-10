@@ -138,6 +138,13 @@ export type Role = {
   description?: string | null;
 };
 
+export type DocumentTag = {
+  id: number;
+  code: string;
+  name: string;
+  color?: string | null;
+};
+
 export type DocumentItem = {
   id: number;
   title: string;
@@ -146,6 +153,7 @@ export type DocumentItem = {
   created_at: string;
   uploaded_by_name?: string | null;
   allowed_role_codes: string[];
+  tags: DocumentTag[];
 };
 
 export type ChatResp = {
