@@ -576,3 +576,310 @@ textarea {
     justify-content: flex-start;
   }
 }
+
+/* =====================================================================
+   Подсистема внутренних заявок и эскалации (рисунок 1.5 BPMN TO-BE)
+   ===================================================================== */
+
+.userbox {
+  display: flex;
+  gap: 0.85rem;
+  align-items: center;
+}
+
+.user-meta {
+  font-size: 0.82rem;
+  color: var(--muted);
+  text-align: right;
+  line-height: 1.45;
+}
+
+.bell-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.bell-btn {
+  position: relative;
+  background: rgba(8, 12, 18, 0.65);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 2.35rem;
+  height: 2.35rem;
+  font-size: 1.1rem;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.bell-btn:hover {
+  border-color: var(--border-strong);
+  background: rgba(8, 12, 18, 0.85);
+}
+
+.bell-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--bg);
+}
+
+.bell-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.45rem);
+  width: 340px;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  z-index: 30;
+}
+
+.bell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.bell-empty {
+  padding: 1rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.bell-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bell-item {
+  border-bottom: 1px solid var(--border);
+}
+
+.bell-item:last-child {
+  border-bottom: none;
+}
+
+.bell-item.unread {
+  background: rgba(52, 211, 153, 0.06);
+}
+
+.bell-item-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 0.7rem 0.9rem;
+  color: var(--text);
+}
+
+.bell-item-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.bell-item-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+  margin-bottom: 0.2rem;
+}
+
+.bell-item-body {
+  font-size: 0.84rem;
+  color: var(--muted);
+  margin-bottom: 0.2rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.bell-item-meta {
+  font-size: 0.74rem;
+  color: var(--muted);
+  opacity: 0.85;
+}
+
+.btn-sm {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.78rem;
+}
+
+/* Баннер «RAG не уверен» в чате */
+.escalation-banner {
+  margin-top: 0.85rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius);
+  background: rgba(251, 113, 133, 0.08);
+  border: 1px solid rgba(251, 113, 133, 0.32);
+}
+
+.escalation-title {
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+  color: #fda4af;
+}
+
+.escalation-text {
+  margin: 0 0 0.6rem;
+  color: #f1f5f9;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+/* Список и карточки заявок */
+.tabs-row {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.tab-btn {
+  padding: 0.5rem 0.95rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(8, 12, 18, 0.5);
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.88rem;
+}
+
+.tab-btn.active {
+  color: var(--text);
+  background: var(--accent-faint);
+  border-color: var(--accent-ring);
+}
+
+.request-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.request-card {
+  display: block;
+  text-decoration: none;
+  color: var(--text);
+  background: linear-gradient(165deg, rgba(22, 31, 44, 0.5) 0%, var(--panel) 60%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.request-card:hover {
+  border-color: var(--accent-ring);
+  transform: translateY(-1px);
+}
+
+.request-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+  font-size: 0.78rem;
+}
+
+.request-card-title {
+  font-weight: 600;
+  font-size: 0.98rem;
+  margin-bottom: 0.4rem;
+}
+
+.request-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.small {
+  font-size: 0.78rem;
+}
+
+.status-pill {
+  display: inline-block;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.status-new       { color: #93c5fd; }
+.status-answered_by_rag { color: var(--accent-bright); }
+.status-escalated { color: #fda4af; }
+.status-in_progress { color: #fcd34d; }
+.status-closed    { color: var(--muted); opacity: 0.85; }
+
+.request-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.9rem;
+}
+
+.request-body {
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 0.9rem;
+}
+
+.req-msg-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  max-height: 52vh;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.req-msg {
+  border-radius: var(--radius);
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--border);
+  background: rgba(8, 12, 18, 0.5);
+}
+
+.req-msg.mine {
+  background: var(--accent-faint);
+  border-color: var(--accent-ring);
+}
+
+.req-msg-head {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
+
+.req-msg-body {
+  white-space: pre-wrap;
+  line-height: 1.5;
+}

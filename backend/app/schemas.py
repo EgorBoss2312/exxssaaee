@@ -101,6 +101,10 @@ class ChatResponse(BaseModel):
     sources: list[SourceRef]
     session_id: int
     rag_query_id: Optional[int] = None
+    rag_uncertain: bool = False
+    top_score: Optional[float] = None
+    suggested_department_code: Optional[str] = None
+    suggested_department_name: Optional[str] = None
 
 
 class FeedbackRequest(BaseModel):
@@ -146,3 +150,103 @@ class ChatMessageOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ---------------------------------------------------------------------------
+# Подсистема внутренних заявок и эскалации
+# ---------------------------------------------------------------------------
+
+
+class DepartmentOut(BaseModel):
+    id: int
+    code: str
+    name: str
+
+    class Config:
+        from_attributes = True
+
+
+class RequestCreate(BaseModel):
+    """Создаёт заявку из текущего диалога.
+
+    Если ``escalate=True`` — заявка сразу переходит в статус ``escalated``
+    и адресуется отделу: явно указанному в ``department_code`` либо
+    подобранному rule-based классификатором.
+    """
+
+    body: str = Field(..., min_length=1, max_length=8000)
+    title: Optional[str] = Field(None, max_length=255)
+    session_id: Optional[int] = None
+    rag_query_id: Optional[int] = None
+    department_code: Optional[str] = None
+    escalate: bool = True
+
+
+class RequestUserRef(BaseModel):
+    id: int
+    full_name: str
+    role_code: Optional[str] = None
+    department_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class RequestMessageOut(BaseModel):
+    id: int
+    author: RequestUserRef
+    content: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class RequestMessageCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=8000)
+
+
+class RequestOut(BaseModel):
+    id: int
+    title: str
+    body: str
+    status: str
+    resolution_kind: Optional[str] = None
+    department: Optional[DepartmentOut] = None
+    author: RequestUserRef
+    assignee: Optional[RequestUserRef] = None
+    chat_session_id: Optional[int] = None
+    rag_query_id: Optional[int] = None
+    created_at: datetime
+    escalated_at: Optional[datetime] = None
+    claimed_at: Optional[datetime] = None
+    closed_at: Optional[datetime] = None
+    messages_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class RequestDetailOut(RequestOut):
+    messages: list[RequestMessageOut] = []
+    can_claim: bool = False
+    can_close: bool = False
+    can_reply: bool = False
+
+
+class NotificationOut(BaseModel):
+    id: int
+    kind: str
+    title: str
+    body: Optional[str] = None
+    request_id: Optional[int] = None
+    is_read: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class NotificationsSummary(BaseModel):
+    unread: int
+    items: list[NotificationOut]

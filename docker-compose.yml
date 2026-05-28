@@ -1,6 +1,9 @@
 services:
+  # Локальный PostgreSQL (pgvector). Поднимается только с профилем local-db.
+  # Для Supabase: создайте .env рядом с этим файлом и пропишите DATABASE_URL=<строка_подключения_Supabase>.
   db:
     image: pgvector/pgvector:pg16
+    profiles: ["local-db"]
     environment:
       POSTGRES_USER: edda
       POSTGRES_PASSWORD: edda
@@ -24,7 +27,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql+psycopg://edda:edda@db:5432/edda
+      # Если DATABASE_URL задан в .env / окружении — используется он (например, Supabase).
+      # Иначе — локальный pg-контейнер (запускайте с профилем local-db).
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://edda:edda@db:5432/edda}
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       # Прод: задайте в .env рядом с compose, например CORS_ORIGINS=https://app.example.com
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000,http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173}
@@ -40,6 +45,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+        required: false
 
 volumes:
   edda_pg:

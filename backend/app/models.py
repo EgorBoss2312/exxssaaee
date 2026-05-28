@@ -83,22 +83,15 @@ class Document(Base):
     mime_type: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     text_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     uploaded_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    category_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("document_categories.id", ondelete="SET NULL"), nullable=True
-    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     uploaded_by_user: Mapped[Optional["User"]] = relationship(
         back_populates="documents_uploaded", foreign_keys=[uploaded_by_id]
     )
-    category: Mapped[Optional["DocumentCategory"]] = relationship(back_populates="documents")
     chunks: Mapped[list["Chunk"]] = relationship(back_populates="document", cascade="all, delete-orphan")
     allowed_roles: Mapped[list["Role"]] = relationship(secondary=document_roles)
     tags: Mapped[list["DocumentTag"]] = relationship(secondary=document_tag_links)
-    versions: Mapped[list["DocumentVersion"]] = relationship(
-        back_populates="document", cascade="all, delete-orphan"
-    )
 
 
 class Chunk(Base):
@@ -162,19 +155,6 @@ class Department(Base):
     users: Mapped[list["User"]] = relationship(back_populates="department")
 
 
-class DocumentCategory(Base):
-    __tablename__ = "document_categories"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-    documents: Mapped[list["Document"]] = relationship(back_populates="category")
-
-
 class DocumentTag(Base):
     __tablename__ = "document_tags"
 
@@ -183,27 +163,6 @@ class DocumentTag(Base):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     color: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-
-class DocumentVersion(Base):
-    __tablename__ = "document_versions"
-    __table_args__ = (
-        UniqueConstraint("document_id", "version_number", name="uq_doc_version_number"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
-    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    storage_path: Mapped[str] = mapped_column(String(1024), nullable=False)
-    file_size: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
-    file_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    change_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    uploaded_by_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-    document: Mapped["Document"] = relationship(back_populates="versions")
 
 
 class EmbeddingModel(Base):
@@ -285,20 +244,6 @@ class QueryFeedback(Base):
     rag_query: Mapped["RagQuery"] = relationship(back_populates="feedback")
 
 
-class SystemSetting(Base):
-    __tablename__ = "system_settings"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    key: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
-    value: Mapped[str] = mapped_column(Text, nullable=False)
-    value_type: Mapped[str] = mapped_column(String(32), default="string", nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    updated_by_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-
 class AuditLog(Base):
     __tablename__ = "audit_log"
 
@@ -313,3 +258,100 @@ class AuditLog(Base):
     ip_address: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     user_agent: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# =====================================================================
+# Подсистема внутренних заявок и эскалации (миграция 004).
+# Реализует целевой жизненный цикл по BPMN TO-BE (рисунок 1.5):
+# приём заявки → автоматическая RAG-обработка → при невозможности —
+# эскалация в подразделение с уведомлением всех его сотрудников.
+# =====================================================================
+
+
+REQUEST_STATUSES = ("new", "answered_by_rag", "escalated", "in_progress", "closed")
+REQUEST_RESOLUTIONS = ("rag", "specialist")
+NOTIFICATION_KINDS = (
+    "request_escalated",
+    "request_claimed",
+    "request_message",
+    "request_closed",
+)
+
+
+class Request(Base):
+    __tablename__ = "requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    author_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="new", nullable=False)
+    resolution_kind: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    department_target_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("departments.id", ondelete="SET NULL"), nullable=True
+    )
+    assignee_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    chat_session_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True
+    )
+    rag_query_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("rag_queries.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    escalated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    claimed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    closed_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    author: Mapped["User"] = relationship(foreign_keys=[author_id])
+    assignee: Mapped[Optional["User"]] = relationship(foreign_keys=[assignee_id])
+    department: Mapped[Optional["Department"]] = relationship(
+        foreign_keys=[department_target_id]
+    )
+    messages: Mapped[list["RequestMessage"]] = relationship(
+        back_populates="request", cascade="all, delete-orphan",
+        order_by="RequestMessage.created_at.asc()",
+    )
+
+
+class RequestMessage(Base):
+    __tablename__ = "request_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_id: Mapped[int] = mapped_column(
+        ForeignKey("requests.id", ondelete="CASCADE"), nullable=False
+    )
+    author_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    request: Mapped["Request"] = relationship(back_populates="messages")
+    author: Mapped["User"] = relationship()
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    recipient_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    request_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("requests.id", ondelete="CASCADE"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    recipient: Mapped["User"] = relationship()

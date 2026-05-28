@@ -156,13 +156,102 @@ export type DocumentItem = {
   tags: DocumentTag[];
 };
 
+export type ChatSource = {
+  document_id: number;
+  document_title: string;
+  chunk_index: number;
+  excerpt: string;
+};
+
 export type ChatResp = {
   answer: string;
-  sources: {
-    document_id: number;
-    document_title: string;
-    chunk_index: number;
-    excerpt: string;
-  }[];
+  sources: ChatSource[];
   session_id: number;
+  rag_query_id?: number | null;
+  rag_uncertain?: boolean;
+  top_score?: number | null;
+  suggested_department_code?: string | null;
+  suggested_department_name?: string | null;
+};
+
+// ---------------------------------------------------------------------------
+// Подсистема заявок и уведомлений
+// ---------------------------------------------------------------------------
+
+export type Department = { id: number; code: string; name: string };
+
+export type RequestUserRef = {
+  id: number;
+  full_name: string;
+  role_code?: string | null;
+  department_name?: string | null;
+};
+
+export type RequestStatus =
+  | "new"
+  | "answered_by_rag"
+  | "escalated"
+  | "in_progress"
+  | "closed";
+
+export type RequestItem = {
+  id: number;
+  title: string;
+  body: string;
+  status: RequestStatus;
+  resolution_kind?: "rag" | "specialist" | null;
+  department?: Department | null;
+  author: RequestUserRef;
+  assignee?: RequestUserRef | null;
+  chat_session_id?: number | null;
+  rag_query_id?: number | null;
+  created_at: string;
+  escalated_at?: string | null;
+  claimed_at?: string | null;
+  closed_at?: string | null;
+  messages_count: number;
+};
+
+export type RequestMessage = {
+  id: number;
+  author: RequestUserRef;
+  content: string;
+  created_at: string;
+};
+
+export type RequestDetail = RequestItem & {
+  messages: RequestMessage[];
+  can_claim: boolean;
+  can_close: boolean;
+  can_reply: boolean;
+};
+
+export type CreateRequestPayload = {
+  body: string;
+  title?: string;
+  session_id?: number | null;
+  rag_query_id?: number | null;
+  department_code?: string | null;
+  escalate?: boolean;
+};
+
+export type NotificationKind =
+  | "request_escalated"
+  | "request_claimed"
+  | "request_message"
+  | "request_closed";
+
+export type NotificationItem = {
+  id: number;
+  kind: NotificationKind;
+  title: string;
+  body?: string | null;
+  request_id?: number | null;
+  is_read: boolean;
+  created_at: string;
+};
+
+export type NotificationsSummary = {
+  unread: number;
+  items: NotificationItem[];
 };

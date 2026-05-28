@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import os
 from pathlib import Path
@@ -8,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.auth_core import hash_password
 from app.config import BACKEND_ROOT, get_settings
 from app.storage_paths import normalize_storage_path
-from app.models import Document, Role, User
+from app.models import Department, Document, Role, User
 from app.services.ingest import attach_roles, reindex_document
 
 
@@ -37,6 +39,109 @@ def ensure_roles(db: Session) -> dict[str, int]:
     return code_to_id
 
 
+_ROLE_TO_DEPARTMENT: dict[str, str] = {
+    # роль (roles.code) → отдел-приёмник заявок (departments.code, миграция 002)
+    "hr": "hr",
+    "it": "it",
+    "otk": "qc",
+    "production": "production",
+    "sales": "sales",
+    "logistics": "warehouse",
+    "finance": "finance",
+    "director": "admin",
+}
+
+
+def _dept_id(db: Session, code: str) -> int | None:
+    """Возвращает ID подразделения по его коду (если миграция 002 применена)."""
+    try:
+        d = db.query(Department).filter(Department.code == code).first()
+        return d.id if d else None
+    except Exception:  # таблица departments ещё не создана (на ранней инициализации)
+        return None
+
+
+# Список демо-пользователей для подсистемы заявок (claim-сценарий).
+# Применяется идемпотентно при каждом старте — даже если БД (например, Supabase)
+# уже не пустая и обычный seed_if_empty пропускает.
+_REQUESTS_DEMO_USERS: list[tuple[str, str, str, str]] = [
+    # email, password, full_name, role_code
+    ("employee@edda.local", "User123456!", "Петров А.И.",   "production"),
+    ("hr2@edda.local",      "Hr223456!",   "Морозова Е.К.", "hr"),
+    ("it2@edda.local",      "It223456!",   "Кузнецов А.Н.", "it"),
+]
+
+
+def seed_requests_demo(db: Session) -> None:
+    """Идемпотентный «add-on seed» для подсистемы внутренних заявок.
+
+    Безопасен для облачной БД (Supabase) с уже наполненными таблицами:
+      1) у существующих пользователей с известным ``role_code`` и пустым
+         ``department_id`` проставляет соответствующий отдел по
+         ``_ROLE_TO_DEPARTMENT`` (нужно, чтобы было кому слать уведомления
+         при эскалации заявки);
+      2) досоздаёт недостающих демо-пользователей (``employee@edda.local``,
+         ``hr2@edda.local``, ``it2@edda.local``) — без них не получится
+         продемонстрировать claim-сценарий (второй сотрудник отдела не видит
+         «занятой» заявки).
+    """
+    try:
+        roles = {r.code: r.id for r in db.query(Role).all()}
+    except Exception:
+        return
+
+    # (1) Backfill department_id для существующих пользователей
+    role_id_to_code: dict[int, str] = {rid: code for code, rid in roles.items()}
+    updated_dept = 0
+    for u in db.query(User).filter(User.department_id.is_(None)).all():
+        code = role_id_to_code.get(u.role_id)
+        if not code:
+            continue
+        dep_code = _ROLE_TO_DEPARTMENT.get(code)
+        if not dep_code:
+            continue
+        dep_id = _dept_id(db, dep_code)
+        if dep_id is not None:
+            u.department_id = dep_id
+            updated_dept += 1
+    if updated_dept:
+        _log.info("seed_requests_demo: backfilled department_id for %d users", updated_dept)
+
+    # (2) Досоздание демо-пользователей (если их ещё нет)
+    created = 0
+    for email, pw, name, role_code in _REQUESTS_DEMO_USERS:
+        if role_code not in roles:
+            continue
+        existing = db.query(User).filter(User.email == email).first()
+        if existing:
+            # Идемпотентно проставим department_id, если он пуст
+            if existing.department_id is None:
+                dep_code = _ROLE_TO_DEPARTMENT.get(role_code)
+                if dep_code:
+                    dep_id = _dept_id(db, dep_code)
+                    if dep_id is not None:
+                        existing.department_id = dep_id
+            continue
+        dep_code = _ROLE_TO_DEPARTMENT.get(role_code)
+        dep_id = _dept_id(db, dep_code) if dep_code else None
+        db.add(
+            User(
+                email=email,
+                hashed_password=hash_password(pw),
+                full_name=name,
+                role_id=roles[role_code],
+                department_id=dep_id,
+                is_active=True,
+            )
+        )
+        created += 1
+    if created:
+        _log.info("seed_requests_demo: created %d demo users", created)
+
+    if updated_dept or created:
+        db.commit()
+
+
 def seed_if_empty(db: Session) -> None:
     if db.query(User).count() > 0:
         return
@@ -55,20 +160,26 @@ def seed_if_empty(db: Session) -> None:
     db.flush()
     admin_id = admin.id
 
+    # Базовые «исторические» демо-пользователи. Дополнительные демо для
+    # подсистемы заявок (employee, второй HR, второй ИТ) досоздаются
+    # идемпотентно функцией seed_requests_demo() — это работает и для
+    # уже наполненной облачной БД (Supabase).
     demos_data = [
         ("director@edda.local", "Director123!", "Иванов И.И.", "director"),
-        ("hr@edda.local", "Hr123456!", "Петрова А.С.", "hr"),
-        ("prod@edda.local", "Prod123456!", "Сидоров П.П.", "production"),
-        ("otk@edda.local", "Otk123456!", "Козлова Е.В.", "otk"),
-        ("it@edda.local", "It123456!", "Смирнов Д.Д.", "it"),
+        ("hr@edda.local",       "Hr123456!",     "Петрова А.С.", "hr"),
+        ("prod@edda.local",     "Prod123456!",   "Сидоров П.П.", "production"),
+        ("otk@edda.local",      "Otk123456!",    "Козлова Е.В.", "otk"),
+        ("it@edda.local",       "It123456!",     "Смирнов Д.Д.", "it"),
     ]
     for email, pw, name, code in demos_data:
+        dep_code = _ROLE_TO_DEPARTMENT.get(code)
         db.add(
             User(
                 email=email,
                 hashed_password=hash_password(pw),
                 full_name=name,
                 role_id=roles[code],
+                department_id=_dept_id(db, dep_code) if dep_code else None,
                 is_active=True,
             )
         )

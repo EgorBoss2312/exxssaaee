@@ -1,5 +1,13 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { apiGet, apiPost, type ChatResp } from "../api";
+import { useNavigate } from "react-router-dom";
+import {
+  apiGet,
+  apiPost,
+  type ChatResp,
+  type CreateRequestPayload,
+  type Department,
+  type RequestDetail,
+} from "../api";
 import { useAuth } from "../auth";
 import {
   loadChatState,
@@ -11,6 +19,13 @@ import {
 } from "../chatSessionStorage";
 
 type LlmStatus = { mode: string; model?: string | null; hint?: string | null };
+
+type EscalationInfo = {
+  message: string;
+  suggestedCode?: string | null;
+  suggestedName?: string | null;
+  ragQueryId?: number | null;
+};
 
 function formatShortTime(ts: number): string {
   try {
@@ -27,6 +42,7 @@ function formatShortTime(ts: number): string {
 
 export default function Chat() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [chats, setChats] = useState<ChatTab[]>([]);
   const [activeChatId, setActiveChatId] = useState<string>("");
   const [hydrated, setHydrated] = useState(false);
@@ -34,6 +50,10 @@ export default function Chat() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [llm, setLlm] = useState<LlmStatus | null>(null);
+  const [escalation, setEscalation] = useState<EscalationInfo | null>(null);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [selectedDepCode, setSelectedDepCode] = useState<string>("");
+  const [escalating, setEscalating] = useState(false);
   const bottom = useRef<HTMLDivElement | null>(null);
 
   const active = useMemo(
@@ -71,6 +91,9 @@ export default function Chat() {
     apiGet<LlmStatus>("/api/meta/llm")
       .then(setLlm)
       .catch(() => setLlm(null));
+    apiGet<Department[]>("/api/requests/meta/departments")
+      .then(setDepartments)
+      .catch(() => setDepartments([]));
   }, [user]);
 
   async function onSubmit(e: FormEvent) {
@@ -96,6 +119,7 @@ export default function Chat() {
       ),
     );
     setBusy(true);
+    setEscalation(null);
     try {
       const res = await apiPost<ChatResp>("/api/chat", {
         message: q,
@@ -116,6 +140,15 @@ export default function Chat() {
               },
         ),
       );
+      if (res.rag_uncertain) {
+        setEscalation({
+          message: q,
+          suggestedCode: res.suggested_department_code ?? null,
+          suggestedName: res.suggested_department_name ?? null,
+          ragQueryId: res.rag_query_id ?? null,
+        });
+        setSelectedDepCode(res.suggested_department_code ?? "");
+      }
     } catch (ex) {
       setErr(String(ex));
       setChats((prev) =>
@@ -153,6 +186,31 @@ export default function Chat() {
     setActiveChatId(id);
     setInput("");
     setErr(null);
+    setEscalation(null);
+  }
+
+  async function onEscalate() {
+    if (!escalation || escalating) return;
+    setEscalating(true);
+    setErr(null);
+    try {
+      const tab = chats.find((c) => c.id === activeChatId);
+      const payload: CreateRequestPayload = {
+        body: escalation.message,
+        title: truncateChatTitle(escalation.message, 220),
+        session_id: tab?.backendSessionId ?? null,
+        rag_query_id: escalation.ragQueryId ?? null,
+        department_code: selectedDepCode || escalation.suggestedCode || null,
+        escalate: true,
+      };
+      const req = await apiPost<RequestDetail>("/api/requests", payload);
+      setEscalation(null);
+      navigate(`/requests/${req.id}`);
+    } catch (ex) {
+      setErr(String(ex));
+    } finally {
+      setEscalating(false);
+    }
   }
 
   return (
@@ -246,6 +304,48 @@ export default function Chat() {
             ))}
             <div ref={bottom} />
           </div>
+          {escalation && (
+            <div className="escalation-banner" role="status">
+              <div className="escalation-title">
+                Не удалось уверенно ответить по корпусу
+              </div>
+              <p className="escalation-text">
+                Передайте вопрос специалистам подразделения. По теме обращения система предложила{" "}
+                <strong>{escalation.suggestedName ?? "ИТ-служба"}</strong>; при необходимости
+                выберите другой отдел.
+              </p>
+              <div className="row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+                <select
+                  className="input"
+                  style={{ maxWidth: 320 }}
+                  value={selectedDepCode}
+                  onChange={(e) => setSelectedDepCode(e.target.value)}
+                >
+                  {departments.map((d) => (
+                    <option key={d.code} value={d.code}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={onEscalate}
+                  disabled={escalating}
+                >
+                  {escalating ? "Отправка…" : "Передать заявку специалистам"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setEscalation(null)}
+                  disabled={escalating}
+                >
+                  Отменить
+                </button>
+              </div>
+            </div>
+          )}
           {err && <div className="err">{err}</div>}
           <form onSubmit={onSubmit} style={{ marginTop: "0.75rem" }}>
             <textarea

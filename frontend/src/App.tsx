@@ -6,6 +6,8 @@ import Knowledge from "./pages/Knowledge";
 import Login from "./pages/Login";
 import Admin from "./pages/Admin";
 import Upload from "./pages/Upload";
+import Requests from "./pages/Requests";
+import RequestDetail from "./pages/RequestDetail";
 
 export default function App() {
   return (
@@ -15,6 +17,8 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route element={<Layout />}>
             <Route path="/" element={<Chat />} />
+            <Route path="/requests" element={<Requests />} />
+            <Route path="/requests/:id" element={<RequestDetail />} />
             <Route path="/knowledge" element={<Knowledge />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/upload" element={<Upload />} />

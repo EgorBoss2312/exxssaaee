@@ -24,6 +24,8 @@ from app.schemas import (
     FeedbackRequest,
     SourceRef,
 )
+from app.models import Department
+from app.services.escalation import classify_department, is_rag_uncertain
 from app.services.rag import answer_question, sources_to_json
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -136,11 +138,26 @@ async def chat(
 
     db.commit()
 
+    # Решение об эскалации: если RAG неуверенный, подсказываем фронту
+    # отдел, в который имеет смысл передать заявку (rule-based).
+    uncertain = is_rag_uncertain(meta.get("top_score"), answer)
+    suggested_code: str | None = None
+    suggested_name: str | None = None
+    if uncertain:
+        cls = classify_department(body.message)
+        suggested_code = cls.code
+        dep = db.query(Department).filter(Department.code == cls.code).first()
+        suggested_name = dep.name if dep else cls.code
+
     return ChatResponse(
         answer=answer,
         sources=sources,
         session_id=session.id,
         rag_query_id=rag_q.id,
+        rag_uncertain=uncertain,
+        top_score=meta.get("top_score"),
+        suggested_department_code=suggested_code,
+        suggested_department_name=suggested_name,
     )
 
 

@@ -7,8 +7,9 @@
 -- Стратегия: миграция применяется ПОВЕРХ существующих 7 таблиц
 -- (roles, users, documents, chunks, document_roles, chat_sessions,
 -- chat_messages). Старые таблицы НЕ удаляются и НЕ переименовываются —
--- это безопасно для рабочего прототипа. Добавляются 10 новых таблиц
+-- это безопасно для рабочего прототипа. Добавляются 7 новых таблиц
 -- и одна nullable-колонка к users (department_id).
+-- (document_categories, document_versions, system_settings убраны в миграции 005.)
 --
 -- Запуск: Supabase Studio → SQL Editor → New query → вставить
 -- содержимое файла → Run. Скрипт идемпотентен (IF NOT EXISTS).
@@ -40,28 +41,7 @@ CREATE INDEX IF NOT EXISTS ix_users_department_id ON users(department_id);
 
 
 -- =====================================================================
--- 2. document_categories — категории документов корпуса
--- =====================================================================
-CREATE TABLE IF NOT EXISTS document_categories (
-    id           SERIAL PRIMARY KEY,
-    code         VARCHAR(64)  NOT NULL UNIQUE,
-    name         VARCHAR(255) NOT NULL,
-    description  TEXT,
-    sort_order   INTEGER      NOT NULL DEFAULT 100,
-    created_at   TIMESTAMP    NOT NULL DEFAULT NOW()
-);
-
-COMMENT ON TABLE document_categories IS 'Тематические категории документов (регламенты, инструкции, кадровые и т.д.).';
-
-ALTER TABLE documents
-    ADD COLUMN IF NOT EXISTS category_id INTEGER
-        REFERENCES document_categories(id) ON DELETE SET NULL;
-
-CREATE INDEX IF NOT EXISTS ix_documents_category_id ON documents(category_id);
-
-
--- =====================================================================
--- 3. document_tags + 4. document_tag_links — тэги документов (M:N)
+-- 2. document_tags + 3. document_tag_links — тэги документов (M:N)
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS document_tags (
     id          SERIAL PRIMARY KEY,
@@ -83,28 +63,7 @@ CREATE INDEX IF NOT EXISTS ix_document_tag_links_tag ON document_tag_links(tag_i
 
 
 -- =====================================================================
--- 5. document_versions — история редакций документа
--- =====================================================================
-CREATE TABLE IF NOT EXISTS document_versions (
-    id              SERIAL PRIMARY KEY,
-    document_id     INTEGER      NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-    version_number  INTEGER      NOT NULL,
-    storage_path    VARCHAR(1024) NOT NULL,
-    file_size       BIGINT,
-    file_hash       VARCHAR(64),
-    change_note     TEXT,
-    uploaded_by_id  INTEGER      REFERENCES users(id) ON DELETE SET NULL,
-    created_at      TIMESTAMP    NOT NULL DEFAULT NOW(),
-    UNIQUE (document_id, version_number)
-);
-
-COMMENT ON TABLE document_versions IS 'История версий документа: при загрузке нового файла предыдущий не удаляется, а сохраняется здесь.';
-
-CREATE INDEX IF NOT EXISTS ix_document_versions_doc ON document_versions(document_id);
-
-
--- =====================================================================
--- 6. embedding_models — реестр моделей эмбеддингов
+-- 4. embedding_models — реестр моделей эмбеддингов
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS embedding_models (
     id              SERIAL PRIMARY KEY,
@@ -125,7 +84,7 @@ ON CONFLICT (code) DO NOTHING;
 
 
 -- =====================================================================
--- 7. rag_queries — журнал RAG-запросов
+-- 5. rag_queries — журнал RAG-запросов
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS rag_queries (
     id                  SERIAL PRIMARY KEY,
@@ -151,7 +110,7 @@ CREATE INDEX IF NOT EXISTS ix_rag_queries_created   ON rag_queries(created_at DE
 
 
 -- =====================================================================
--- 8. query_sources — какие фрагменты ушли в контекст ответа
+-- 6. query_sources — какие фрагменты ушли в контекст ответа
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS query_sources (
     id              SERIAL PRIMARY KEY,
@@ -168,7 +127,7 @@ CREATE INDEX IF NOT EXISTS ix_query_sources_chunk ON query_sources(chunk_id);
 
 
 -- =====================================================================
--- 9. query_feedback — обратная связь пользователя по ответу
+-- 7. query_feedback — обратная связь пользователя по ответу
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS query_feedback (
     id              SERIAL PRIMARY KEY,
@@ -185,30 +144,7 @@ CREATE INDEX IF NOT EXISTS ix_query_feedback_query ON query_feedback(rag_query_i
 
 
 -- =====================================================================
--- 10. system_settings — параметры RAG/LLM (key-value)
--- =====================================================================
-CREATE TABLE IF NOT EXISTS system_settings (
-    id           SERIAL PRIMARY KEY,
-    key          VARCHAR(128) NOT NULL UNIQUE,
-    value        TEXT         NOT NULL,
-    value_type   VARCHAR(32)  NOT NULL DEFAULT 'string',
-    description  TEXT,
-    updated_by_id INTEGER     REFERENCES users(id) ON DELETE SET NULL,
-    updated_at   TIMESTAMP    NOT NULL DEFAULT NOW()
-);
-
-COMMENT ON TABLE system_settings IS 'Настройки системы (top_k, температура, prompt template, провайдер LLM по умолчанию).';
-
-INSERT INTO system_settings (key, value, value_type, description) VALUES
-    ('rag.top_k',              '5',       'integer', 'Количество фрагментов в контексте RAG-ответа.'),
-    ('rag.min_score',          '0.25',    'float',   'Порог релевантности (косинус) для отбора кандидатов.'),
-    ('llm.default_provider',   'gemini',  'string',  'Провайдер LLM по умолчанию (gemini/openai/ollama).'),
-    ('llm.temperature',        '0.2',     'float',   'Температура генерации LLM-ответа.')
-ON CONFLICT (key) DO NOTHING;
-
-
--- =====================================================================
--- 11. audit_log — журнал действий (раздел 2.4 ИБ)
+-- 8. audit_log — журнал действий (раздел 2.4 ИБ)
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS audit_log (
     id           BIGSERIAL PRIMARY KEY,
@@ -245,19 +181,6 @@ INSERT INTO departments (code, name, description) VALUES
 ON CONFLICT (code) DO NOTHING;
 
 
--- =====================================================================
--- Сидинг базовых категорий документов
--- =====================================================================
-INSERT INTO document_categories (code, name, description, sort_order) VALUES
-    ('regulations',    'Регламенты и стандарты',         'Регламенты ОТК, стандарты упаковки, нормативные документы.', 10),
-    ('tech_instr',     'Технологические инструкции',     'Инструкции по производственным операциям и эксплуатации оборудования.', 20),
-    ('safety',         'Охрана труда и ТБ',              'Документы по охране труда, технике безопасности, противопожарной безопасности.', 30),
-    ('hr_docs',        'Кадровые документы',             'Положения о подразделениях, должностные инструкции.', 40),
-    ('commerce',       'Коммерческие документы',         'Шаблоны договоров, спецификации, прайс-листы.', 50),
-    ('reports',        'Отчёты и спецификации',          'Отчёты по производству и логистике, номенклатурные справочники.', 60),
-    ('orders',         'Приказы и распоряжения',         'Приказы, внутренние распоряжения, организационные документы.', 70)
-ON CONFLICT (code) DO NOTHING;
-
 COMMIT;
 
 -- =====================================================================
@@ -267,10 +190,8 @@ COMMIT;
 --    WHERE table_schema = 'public'
 --    ORDER BY table_name;
 --
--- Ожидаемый список (17 таблиц):
+-- Ожидаемый список (14 таблиц public + заявки из 004):
 --   audit_log, chat_messages, chat_sessions, chunks, departments,
---   document_categories, document_roles, document_tag_links,
---   document_tags, document_versions, documents, embedding_models,
---   query_feedback, query_sources, rag_queries, roles, system_settings,
---   users
+--   document_roles, document_tag_links, document_tags, documents,
+--   embedding_models, query_feedback, query_sources, rag_queries, roles, users
 -- =====================================================================

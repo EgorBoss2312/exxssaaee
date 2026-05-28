@@ -10,8 +10,21 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.database import SessionLocal, engine, Base
-from app.routers import admin, auth, chat, documents, meta
-from app.seed import apply_sql_migrations, init_extensions, seed_if_empty
+from app.routers import (
+    admin,
+    auth,
+    chat,
+    documents,
+    meta,
+    notifications as notifications_router,
+    requests as requests_router,
+)
+from app.seed import (
+    apply_sql_migrations,
+    init_extensions,
+    seed_if_empty,
+    seed_requests_demo,
+)
 
 settings = get_settings()
 _log = logging.getLogger(__name__)
@@ -24,6 +37,8 @@ api_app.include_router(documents.router, prefix="")
 api_app.include_router(chat.router, prefix="")
 api_app.include_router(admin.router, prefix="")
 api_app.include_router(meta.router, prefix="")
+api_app.include_router(requests_router.router, prefix="")
+api_app.include_router(notifications_router.router, prefix="")
 
 
 @api_app.get("/health")
@@ -75,17 +90,24 @@ def _startup():
     os.makedirs(settings.upload_dir, exist_ok=True)
     init_extensions(engine)
     # Сначала идемпотентная схема-миграция (добавляет недостающие колонки и таблицы
-    # в уже существующих БД — например users.department_id, documents.category_id),
+    # в уже существующих БД — например users.department_id),
     # потом create_all для полноты, потом seed.
-    apply_sql_migrations(engine, ["002_extended_schema.sql"])
+    apply_sql_migrations(engine, ["002_extended_schema.sql", "004_requests.sql"])
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         seed_if_empty(db)
+        # Идемпотентный «add-on seed» для подсистемы заявок:
+        # проставляет department_id существующим пользователям и досоздаёт
+        # недостающих демо-пользователей под claim-сценарий. Безопасен для
+        # уже наполненной облачной БД (Supabase), которую seed_if_empty
+        # пропускает по условию «users.count() > 0».
+        seed_requests_demo(db)
     finally:
         db.close()
-    # Демо-данные расширенных таблиц (тэги/версии) — после seed, когда документы уже созданы.
+    # Демо-данные тэгов — после seed, когда документы уже созданы.
     apply_sql_migrations(engine, ["003_demo_data.sql"])
+    apply_sql_migrations(engine, ["005_drop_unused_tables.sql"])
 
 
 # --- SPA static (production / docker): set FRONTEND_DIST to built Vite `dist` folder ---

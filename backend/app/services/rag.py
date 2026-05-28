@@ -219,6 +219,8 @@ async def answer_question(
         for rank, b in enumerate(blocks)
     ]
 
+    top_score = float(max(scores)) if scores else None
+
     meta = {
         "chunks_used": chunks_used,
         "top_k": top_k,
@@ -227,6 +229,7 @@ async def answer_question(
         "llm_provider": provider,
         "llm_model": llm_model,
         "embedding_model_code": settings.embedding_model,
+        "top_score": top_score,
     }
 
     return answer, sources, meta
