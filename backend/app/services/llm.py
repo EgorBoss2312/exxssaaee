@@ -196,6 +196,7 @@ async def generate_rag_answer(
                     {"role": "user", "content": user},
                 ],
                 temperature=0.2,
+                max_tokens=1024,
             )
             return (r.choices[0].message.content or "").strip()
         except Exception as e:
