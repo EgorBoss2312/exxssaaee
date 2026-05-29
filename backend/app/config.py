@@ -104,7 +104,10 @@ class Settings(BaseSettings):
         if v is None:
             return None
         if isinstance(v, str):
-            s = v.strip()
+            s = v.strip().strip("\r\n\t")
+            # Render/панели иногда сохраняют ключ в кавычках — API тогда отвечает 400/401.
+            if len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'":
+                s = s[1:-1].strip()
             return s if s else None
         return v
 

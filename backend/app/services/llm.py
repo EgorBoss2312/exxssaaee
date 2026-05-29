@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -17,6 +18,7 @@ def _gemini_model_candidates(primary: str) -> list[str]:
         "gemini-2.5-flash",
         "gemini-2.5-flash-lite",
         "gemini-flash-latest",
+        "gemini-2.0-flash",
     ]
     seen: set[str] = set()
     out: list[str] = []
@@ -25,6 +27,21 @@ def _gemini_model_candidates(primary: str) -> list[str]:
             seen.add(m)
             out.append(m)
     return out
+
+
+def _gemini_text_from_response(data: dict[str, Any]) -> str:
+    cands = data.get("candidates") or []
+    if not cands:
+        return ""
+    parts = (cands[0].get("content") or {}).get("parts") or []
+    texts: list[str] = []
+    for p in parts:
+        if not isinstance(p, dict):
+            continue
+        t = p.get("text")
+        if isinstance(t, str) and t.strip():
+            texts.append(t.strip())
+    return "\n".join(texts).strip()
 
 
 async def _gemini_generate(settings: Settings, system: str, user_text: str) -> str | None:
@@ -36,34 +53,38 @@ async def _gemini_generate(settings: Settings, system: str, user_text: str) -> s
     }
     last_body = ""
     last_code = 0
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": (settings.gemini_api_key or "").strip(),
+    }
     async with httpx.AsyncClient(timeout=120.0) as client:
         for model in _gemini_model_candidates(settings.gemini_model):
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-            r = await client.post(
-                url,
-                params={"key": settings.gemini_api_key},
-                json=payload,
-            )
-            last_code = r.status_code
-            last_body = r.text
-            if r.status_code in (401, 403):
-                logger.warning("Gemini: ключ API отклонён (HTTP %s). Проверьте GEMINI_API_KEY.", r.status_code)
-                return None
+            for attempt in range(3):
+                r = await client.post(url, headers=headers, json=payload)
+                last_code = r.status_code
+                last_body = r.text
+                if r.status_code in (401, 403, 400):
+                    logger.warning(
+                        "Gemini: ключ API отклонён (HTTP %s). Проверьте GEMINI_API_KEY в Render без кавычек и пробелов: %s",
+                        r.status_code,
+                        r.text[:300],
+                    )
+                    return None
+                if r.status_code in (429, 503) and attempt < 2:
+                    await asyncio.sleep(0.6 * (attempt + 1))
+                    continue
+                break
             if r.status_code == 200:
                 data = r.json()
-                cands = data.get("candidates") or []
-                if not cands:
-                    logger.warning("Gemini модель %s: нет candidates: %s", model, str(data)[:800])
-                    continue
-                parts = (cands[0].get("content") or {}).get("parts") or []
-                texts = [p.get("text", "") for p in parts if isinstance(p, dict)]
-                out = "\n".join(texts).strip()
+                out = _gemini_text_from_response(data)
                 if out:
                     if model != settings.gemini_model.strip():
                         logger.info("Gemini: использована запасная модель %s (основная %s недоступна)", model, settings.gemini_model)
                     else:
                         logger.info("Gemini: ответ получен, модель %s", model)
                     return out
+                logger.warning("Gemini модель %s: нет текста в candidates: %s", model, str(data)[:800])
                 continue
             logger.warning(
                 "Gemini модель %s HTTP %s: %s",
@@ -160,9 +181,43 @@ async def generate_rag_answer(
     parts = []
     for j, b in enumerate(context_blocks[:4], 1):
         parts.append(f"**[{j}] {b['title']}**\n{b['excerpt'][:900]}")
-    # Кратко для пользователя; настройка ключей — в плашке чата (/api/meta/llm) и в README
-    return (
-        "Ниже — наиболее релевантные выдержки из документов. "
-        "Краткий связный ответ появится, когда на сервере будет доступна языковая модель (Gemini, OpenAI или Ollama).\n\n"
-        + "\n\n".join(parts)
-    )
+    if settings.gemini_api_key:
+        intro = (
+            "Ключ Gemini на сервере задан, но API не вернул ответ (проверьте квоту, актуальность ключа "
+            "и что после изменения Environment на Render выполнен redeploy, а не только «Save only»). "
+            "Ниже — найденные фрагменты документов.\n\n"
+        )
+    elif settings.openai_api_key:
+        intro = (
+            "Ключ OpenAI на сервере задан, но API не ответил. Ниже — найденные фрагменты документов.\n\n"
+        )
+    else:
+        intro = (
+            "Ниже — наиболее релевантные выдержки из документов. "
+            "Краткий связный ответ появится, когда на сервере будет доступна языковая модель "
+            "(Gemini, OpenAI или Ollama).\n\n"
+        )
+    return intro + "\n\n".join(parts)
+
+
+async def probe_gemini(settings: Settings | None = None) -> dict[str, Any]:
+    """Короткая проверка ключа Gemini (для /api/health/llm и старта сервера)."""
+    settings = settings or get_settings()
+    key = (settings.gemini_api_key or "").strip()
+    if not key:
+        return {"configured": False, "ok": False, "detail": "GEMINI_API_KEY не задан"}
+    headers = {"Content-Type": "application/json", "x-goog-api-key": key}
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    payload = {"contents": [{"parts": [{"text": "ok"}]}], "generationConfig": {"maxOutputTokens": 8}}
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            r = await client.post(url, headers=headers, json=payload)
+        if r.status_code == 200 and _gemini_text_from_response(r.json()):
+            return {"configured": True, "ok": True, "detail": "Gemini отвечает"}
+        return {
+            "configured": True,
+            "ok": False,
+            "detail": f"HTTP {r.status_code}: {r.text[:240]}",
+        }
+    except Exception as e:
+        return {"configured": True, "ok": False, "detail": f"ошибка сети: {e}"}

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.services.llm import probe_gemini
 from app.database import get_db
 from app.deps import get_current_user
 from app.models import DocumentTag, Role, User
@@ -33,14 +34,22 @@ def list_document_tags_for_ui(
 
 
 @router.get("/llm", response_model=LlmStatusOut)
-def llm_status(_: Annotated[User, Depends(get_current_user)]) -> LlmStatusOut:
+async def llm_status(_: Annotated[User, Depends(get_current_user)]) -> LlmStatusOut:
     """
-    Показывает, будет ли ответ собираться языковой моделью или только фрагментами (extractive).
-    Не проверяет валидность API-ключей — только их наличие и доступность Ollama по HTTP.
+    Показывает активный режим LLM. Для Gemini дополнительно проверяет, отвечает ли API.
     """
     settings = get_settings()
     if settings.gemini_api_key:
-        return LlmStatusOut(mode="gemini", model=settings.gemini_model)
+        probe = await probe_gemini(settings)
+        if probe["ok"]:
+            return LlmStatusOut(mode="gemini", model=settings.gemini_model)
+        return LlmStatusOut(
+            mode="extractive",
+            hint=(
+                f"Ключ Gemini задан, но Google API не отвечает: {probe['detail']}. "
+                "Render → Environment → проверьте GEMINI_API_KEY (без кавычек) → Manual Deploy."
+            ),
+        )
     if settings.openai_api_key:
         return LlmStatusOut(mode="openai", model=settings.openai_model)
     base = settings.ollama_base_url.rstrip("/")

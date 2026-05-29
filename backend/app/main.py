@@ -19,6 +19,7 @@ from app.routers import (
     notifications as notifications_router,
     requests as requests_router,
 )
+from app.services.llm import probe_gemini
 from app.seed import (
     apply_sql_migrations,
     init_extensions,
@@ -39,6 +40,17 @@ api_app.include_router(admin.router, prefix="")
 api_app.include_router(meta.router, prefix="")
 api_app.include_router(requests_router.router, prefix="")
 api_app.include_router(notifications_router.router, prefix="")
+
+
+@api_app.get("/health/llm")
+async def health_llm():
+    """Публичная проверка: задан ли ключ и принимает ли его Google (без раскрытия секрета)."""
+    probe = await probe_gemini(settings)
+    return {
+        "gemini_configured": probe["configured"],
+        "gemini_ok": probe["ok"],
+        "detail": probe["detail"],
+    }
 
 
 @api_app.get("/health")
@@ -67,7 +79,7 @@ def _is_paas_env() -> bool:
 
 
 @app.on_event("startup")
-def _startup():
+async def _startup():
     if os.environ.get("EDDA_USE_HASH_EMBEDDINGS", "").strip().lower() in ("1", "true", "yes"):
         _log.warning(
             "EDDA_USE_HASH_EMBEDDINGS включён: эмбеддинги без PyTorch (~512MB RAM). "
@@ -78,6 +90,23 @@ def _startup():
         len(settings.cors_origins_list),
         bool(settings.cors_origin_regex),
     )
+    if settings.gemini_api_key:
+        k = settings.gemini_api_key
+        _log.info("LLM: Gemini key loaded (%s…%s)", k[:6], k[-4:])
+        try:
+            probe = await probe_gemini(settings)
+            if probe["ok"]:
+                _log.info("LLM: Gemini probe OK")
+            else:
+                _log.warning("LLM: Gemini probe failed — %s", probe["detail"])
+        except Exception as e:
+            _log.warning("LLM: Gemini probe error — %s", e)
+    elif settings.openai_api_key:
+        _log.info("LLM: OpenAI key loaded")
+    else:
+        _log.warning(
+            "LLM: GEMINI_API_KEY / OPENAI_API_KEY не заданы — чат будет в режиме только фрагментов."
+        )
     # Fail-fast: в облаке без DATABASE_URL подставится дефолт 127.0.0.1:5432 → длинный
     # стек "Connection refused". Лучше сразу выдать понятное сообщение.
     raw_db_url = os.environ.get("DATABASE_URL", "").strip()
