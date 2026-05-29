@@ -50,6 +50,7 @@ async def health_llm():
         "gemini_configured": probe["configured"],
         "gemini_ok": probe["ok"],
         "detail": probe["detail"],
+        "key_prefix": probe.get("key_prefix"),
     }
 
 

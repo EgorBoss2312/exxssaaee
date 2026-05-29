@@ -205,7 +205,7 @@ async def probe_gemini(settings: Settings | None = None) -> dict[str, Any]:
     settings = settings or get_settings()
     key = (settings.gemini_api_key or "").strip()
     if not key:
-        return {"configured": False, "ok": False, "detail": "GEMINI_API_KEY не задан"}
+        return {"configured": False, "ok": False, "detail": "GEMINI_API_KEY не задан", "key_prefix": None}
     headers = {"Content-Type": "application/json", "x-goog-api-key": key}
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     payload = {"contents": [{"parts": [{"text": "ok"}]}], "generationConfig": {"maxOutputTokens": 8}}
@@ -213,11 +213,22 @@ async def probe_gemini(settings: Settings | None = None) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=20.0) as client:
             r = await client.post(url, headers=headers, json=payload)
         if r.status_code == 200 and _gemini_text_from_response(r.json()):
-            return {"configured": True, "ok": True, "detail": "Gemini отвечает"}
+            return {
+                "configured": True,
+                "ok": True,
+                "detail": "Gemini отвечает",
+                "key_prefix": f"{key[:8]}…",
+            }
         return {
             "configured": True,
             "ok": False,
             "detail": f"HTTP {r.status_code}: {r.text[:240]}",
+            "key_prefix": f"{key[:8]}…",
         }
     except Exception as e:
-        return {"configured": True, "ok": False, "detail": f"ошибка сети: {e}"}
+        return {
+            "configured": True,
+            "ok": False,
+            "detail": f"ошибка сети: {e}",
+            "key_prefix": f"{key[:8]}…",
+        }
