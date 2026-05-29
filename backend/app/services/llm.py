@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Any
 
 import httpx
@@ -9,6 +10,48 @@ import httpx
 from app.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
+_last_gemini_error_kind: str | None = None
+
+_GEMINI_GEO_MARKERS = (
+    "user location is not supported",
+    "location is not supported for the api use",
+)
+
+
+def _gemini_http_client(settings: Settings, *, timeout: float = 120.0) -> httpx.AsyncClient:
+    proxy = (
+        (settings.gemini_https_proxy or "").strip()
+        or os.environ.get("GEMINI_HTTPS_PROXY", "").strip()
+        or os.environ.get("HTTPS_PROXY", "").strip()
+        or os.environ.get("https_proxy", "").strip()
+        or None
+    )
+    return httpx.AsyncClient(timeout=timeout, proxy=proxy, trust_env=True)
+
+
+def _gemini_error_kind(body: str) -> str | None:
+    low = body.lower()
+    if any(m in low for m in _GEMINI_GEO_MARKERS):
+        return "geo_blocked"
+    if "api key expired" in low:
+        return "expired"
+    if "api key not valid" in low or "invalid authentication" in low:
+        return "invalid_key"
+    return None
+
+
+def _gemini_error_hint(kind: str | None) -> str:
+    if kind == "geo_blocked":
+        return (
+            "Google Gemini недоступен в вашем регионе (User location is not supported). "
+            "Варианты: OPENAI_API_KEY; локально Ollama; для Gemini — GEMINI_HTTPS_PROXY или ключ "
+            "от Google-аккаунта, созданного в поддерживаемой стране (EU/US)."
+        )
+    if kind == "expired":
+        return "Ключ Gemini просрочен — создайте новый в Google AI Studio."
+    if kind == "invalid_key":
+        return "Ключ Gemini отклонён — проверьте значение без кавычек и лишних пробелов."
+    return "Проверьте GEMINI_API_KEY, квоту и redeploy на Render."
 
 
 def _gemini_model_candidates(primary: str) -> list[str]:
@@ -46,6 +89,8 @@ def _gemini_text_from_response(data: dict[str, Any]) -> str:
 
 async def _gemini_generate(settings: Settings, system: str, user_text: str) -> str | None:
     """REST API Gemini: https://ai.google.dev/api/rest/v1beta/models.generateContent"""
+    global _last_gemini_error_kind
+    _last_gemini_error_kind = None
     payload = {
         "systemInstruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": user_text}]}],
@@ -53,20 +98,28 @@ async def _gemini_generate(settings: Settings, system: str, user_text: str) -> s
     }
     last_body = ""
     last_code = 0
+    last_kind: str | None = None
     headers = {
         "Content-Type": "application/json",
         "x-goog-api-key": (settings.gemini_api_key or "").strip(),
     }
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with _gemini_http_client(settings) as client:
         for model in _gemini_model_candidates(settings.gemini_model):
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
             for attempt in range(3):
                 r = await client.post(url, headers=headers, json=payload)
                 last_code = r.status_code
                 last_body = r.text
+                kind = _gemini_error_kind(last_body)
+                if kind:
+                    last_kind = kind
                 if r.status_code in (401, 403, 400):
+                    if kind in ("geo_blocked", "expired", "invalid_key"):
+                        _last_gemini_error_kind = kind
+                        logger.warning("Gemini: %s (HTTP %s)", _gemini_error_hint(kind), r.status_code)
+                        return None
                     logger.warning(
-                        "Gemini: ключ API отклонён (HTTP %s). Проверьте GEMINI_API_KEY в Render без кавычек и пробелов: %s",
+                        "Gemini: ошибка API (HTTP %s): %s",
                         r.status_code,
                         r.text[:300],
                     )
@@ -182,11 +235,7 @@ async def generate_rag_answer(
     for j, b in enumerate(context_blocks[:4], 1):
         parts.append(f"**[{j}] {b['title']}**\n{b['excerpt'][:900]}")
     if settings.gemini_api_key:
-        intro = (
-            "Ключ Gemini на сервере задан, но API не вернул ответ (проверьте квоту, актуальность ключа "
-            "и что после изменения Environment на Render выполнен redeploy, а не только «Save only»). "
-            "Ниже — найденные фрагменты документов.\n\n"
-        )
+        intro = _gemini_error_hint(_last_gemini_error_kind) + " Ниже — найденные фрагменты документов.\n\n"
     elif settings.openai_api_key:
         intro = (
             "Ключ OpenAI на сервере задан, но API не ответил. Ниже — найденные фрагменты документов.\n\n"
@@ -210,7 +259,7 @@ async def probe_gemini(settings: Settings | None = None) -> dict[str, Any]:
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     payload = {"contents": [{"parts": [{"text": "ok"}]}], "generationConfig": {"maxOutputTokens": 8}}
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
+        async with _gemini_http_client(settings, timeout=20.0) as client:
             r = await client.post(url, headers=headers, json=payload)
         if r.status_code == 200 and _gemini_text_from_response(r.json()):
             return {
@@ -218,12 +267,16 @@ async def probe_gemini(settings: Settings | None = None) -> dict[str, Any]:
                 "ok": True,
                 "detail": "Gemini отвечает",
                 "key_prefix": f"{key[:8]}…",
+                "error_kind": None,
             }
+        kind = _gemini_error_kind(r.text)
+        detail = _gemini_error_hint(kind) if kind else f"HTTP {r.status_code}: {r.text[:240]}"
         return {
             "configured": True,
             "ok": False,
-            "detail": f"HTTP {r.status_code}: {r.text[:240]}",
+            "detail": detail,
             "key_prefix": f"{key[:8]}…",
+            "error_kind": kind,
         }
     except Exception as e:
         return {
@@ -231,4 +284,5 @@ async def probe_gemini(settings: Settings | None = None) -> dict[str, Any]:
             "ok": False,
             "detail": f"ошибка сети: {e}",
             "key_prefix": f"{key[:8]}…",
+            "error_kind": None,
         }

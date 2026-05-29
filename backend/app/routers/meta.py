@@ -45,9 +45,10 @@ async def llm_status(_: Annotated[User, Depends(get_current_user)]) -> LlmStatus
             return LlmStatusOut(mode="gemini", model=settings.gemini_model)
         return LlmStatusOut(
             mode="extractive",
-            hint=(
-                f"Ключ Gemini задан, но Google API не отвечает: {probe['detail']}. "
-                "Render → Environment → проверьте GEMINI_API_KEY (без кавычек) → Manual Deploy."
+            hint=probe.get("detail")
+            or (
+                f"Ключ Gemini задан, но Google API не отвечает. "
+                "Render → Environment → проверьте GEMINI_API_KEY → Manual Deploy."
             ),
         )
     if settings.openai_api_key:

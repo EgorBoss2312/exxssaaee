@@ -126,6 +126,14 @@ GEMINI_MODEL=gemini-2.5-flash
 
 Если для выбранной модели закончилась квота (HTTP 429) или имя устарело (404), backend автоматически пробует запасные варианты (`gemini-2.5-flash-lite`, `gemini-flash-latest`). При необходимости задайте другое имя вручную по [списку моделей](https://ai.google.dev/gemini-api/docs/models).
 
+**Ограничение региона (РФ):** при ошибке `User location is not supported` прямой Gemini API недоступен для вашего Google-аккаунта или IP. Решения для диплома и демо:
+
+- **OpenRouter** (из РФ): `OPENAI_BASE_URL=https://openrouter.ai/api/v1`, `OPENAI_API_KEY=sk-or-...`, `OPENAI_MODEL=google/gemini-2.5-flash` — уберите или закомментируйте `GEMINI_API_KEY`, чтобы сработал OpenAI-совместимый путь.
+- **Локально:** [Ollama](https://ollama.com) (`ollama pull llama3.2`).
+- **Прокси для Gemini:** `GEMINI_HTTPS_PROXY` в Render Environment (прокси в EU/US).
+
+Проверка: `GET /api/health/llm` → `gemini_ok: true` или `error_kind: geo_blocked`.
+
 **OpenAI (или совместимый провайдер)** — в `.env`:
 
 ```env

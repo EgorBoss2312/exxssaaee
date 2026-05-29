@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     gemini_api_key: Optional[str] = None
     gemini_model: str = "gemini-2.5-flash"
+    # Прокси для Gemini (РФ и др. регионы без прямого доступа): https://user:pass@host:port
+    gemini_https_proxy: Optional[str] = None
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "llama3.2"
     embedding_model: str = "paraphrase-multilingual-MiniLM-L12-v2"
