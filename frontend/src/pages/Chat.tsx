@@ -18,6 +18,7 @@ import {
   type ChatMsg,
   type ChatTab,
 } from "../chatSessionStorage";
+import { formatChatAnswer } from "../formatChatAnswer";
 
 type LlmStatus = { mode: string; model?: string | null; hint?: string | null };
 
@@ -332,7 +333,7 @@ export default function Chat() {
                   <div className="msg-user">{m.content}</div>
                 ) : (
                   <div className="msg-bot">
-                    {m.content}
+                    {formatChatAnswer(m.content)}
                     {m.ragQueryId != null && (
                       <div className="feedback-row">
                         {m.feedback ? (
