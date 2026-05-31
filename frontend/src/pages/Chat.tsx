@@ -333,18 +333,6 @@ export default function Chat() {
                 ) : (
                   <div className="msg-bot">
                     {m.content}
-                    {m.sources && m.sources.length > 0 && (
-                      <div className="sources">
-                        <strong className="muted">Источники:</strong>
-                        <ul style={{ margin: "0.35rem 0 0 1rem" }}>
-                          {m.sources.map((s, j) => (
-                            <li key={j}>
-                              {s.document_title} (фрагмент #{s.chunk_index})
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
                     {m.ragQueryId != null && (
                       <div className="feedback-row">
                         {m.feedback ? (
