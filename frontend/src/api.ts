@@ -91,9 +91,10 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
 export async function apiUpload(
   path: string,
   form: FormData,
+  method: "POST" | "PUT" = "POST",
 ): Promise<unknown> {
   const r = await fetch(resolveApiUrl(path), {
-    method: "POST",
+    method,
     headers: { ...authHeader() },
     body: form,
   });
@@ -156,6 +157,20 @@ export type DocumentItem = {
   tags: DocumentTag[];
 };
 
+export type DocumentsReindexResult = {
+  reindexed: number;
+  missing_files: number;
+  paths_normalized: number;
+  total: number;
+};
+
+export type DocumentReindexResult = {
+  ok: boolean;
+  document_id: number;
+  file_missing: boolean;
+  path_normalized: boolean;
+};
+
 export type ChatSource = {
   document_id: number;
   document_title: string;
@@ -173,6 +188,21 @@ export type ChatResp = {
   suggested_department_code?: string | null;
   suggested_department_name?: string | null;
 };
+
+export type FeedbackResp = { ok: boolean; feedback_id: number };
+
+/** Оценка полезности RAG-ответа («полезно»/«не полезно»). */
+export async function sendFeedback(
+  ragQueryId: number,
+  isHelpful: boolean,
+  comment?: string | null,
+): Promise<FeedbackResp> {
+  return apiPost<FeedbackResp>("/api/chat/feedback", {
+    rag_query_id: ragQueryId,
+    is_helpful: isHelpful,
+    comment: comment ?? null,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Подсистема заявок и уведомлений

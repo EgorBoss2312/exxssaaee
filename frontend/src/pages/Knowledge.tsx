@@ -1,11 +1,19 @@
-import { useEffect, useState } from "react";
-import { apiGet, downloadAuthed } from "../api";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { apiGet, apiUpload, downloadAuthed } from "../api";
 import type { DocumentItem } from "../api";
+import { useAuth } from "../auth";
 
 export default function Knowledge() {
+  const { user } = useAuth();
   const [docs, setDocs] = useState<DocumentItem[]>([]);
   const [preview, setPreview] = useState<{ title: string; text: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  const [replacingId, setReplacingId] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const replaceDocRef = useRef<DocumentItem | null>(null);
+
+  const canUpdate = user?.role_code === "admin" || user?.role_code === "it";
 
   async function load() {
     setErr(null);
@@ -21,6 +29,34 @@ export default function Knowledge() {
     void load();
   }, []);
 
+  function startReplace(doc: DocumentItem) {
+    replaceDocRef.current = doc;
+    fileInputRef.current?.click();
+  }
+
+  async function onFilePicked(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    const doc = replaceDocRef.current;
+    e.target.value = "";
+    replaceDocRef.current = null;
+    if (!file || !doc) return;
+
+    setReplacingId(doc.id);
+    setErr(null);
+    setInfo(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const updated = await apiUpload(`/api/documents/${doc.id}/file`, fd, "PUT") as DocumentItem;
+      setDocs((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+      setInfo(`«${updated.title}»: файл заменён на «${updated.original_filename}», индекс обновлён.`);
+    } catch (ex) {
+      setErr(String(ex));
+    } finally {
+      setReplacingId(null);
+    }
+  }
+
   async function openPreview(id: number, title: string) {
     try {
       const p = await apiGet<{ text: string }>(`/api/documents/${id}/preview`);
@@ -32,12 +68,36 @@ export default function Knowledge() {
 
   return (
     <div className="app-shell">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.doc,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+        style={{ display: "none" }}
+        onChange={(e) => void onFilePicked(e)}
+      />
       <h1>База знаний</h1>
       <p className="muted">
         Список документов, доступных вашей роли. Полный корпус хранится в PostgreSQL; фрагменты
         индексируются для поиска и ответов ИИ.
+        {canUpdate && (
+          <> Кнопка «Обновить» позволяет выбрать новый файл с компьютера и заменить текущую версию документа.</>
+        )}
       </p>
       {err && <div className="err">{err}</div>}
+      {info && (
+        <div
+          className="card"
+          style={{
+            marginTop: "0.75rem",
+            marginBottom: "0.75rem",
+            padding: "0.65rem 0.85rem",
+            borderColor: "var(--accent)",
+            fontSize: "0.9rem",
+          }}
+        >
+          {info}
+        </div>
+      )}
       <div className="doc-list" style={{ marginTop: "1rem" }}>
         {docs.map((d) => (
           <div key={d.id} className="doc-item">
@@ -84,6 +144,16 @@ export default function Knowledge() {
               )}
             </div>
             <div className="row">
+              {canUpdate && (
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={replacingId === d.id}
+                  onClick={() => startReplace(d)}
+                >
+                  {replacingId === d.id ? "Загрузка…" : "Обновить"}
+                </button>
+              )}
               <button type="button" className="btn btn-ghost" onClick={() => openPreview(d.id, d.title)}>
                 Превью текста
               </button>

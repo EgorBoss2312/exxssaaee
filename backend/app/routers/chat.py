@@ -140,7 +140,11 @@ async def chat(
 
     # Решение об эскалации: если RAG неуверенный, подсказываем фронту
     # отдел, в который имеет смысл передать заявку (rule-based).
-    uncertain = is_rag_uncertain(meta.get("top_score"), answer)
+    uncertain = is_rag_uncertain(
+        meta.get("top_score"),
+        answer,
+        best_title_match=meta.get("best_title_match"),
+    )
     suggested_code: str | None = None
     suggested_name: str | None = None
     if uncertain:

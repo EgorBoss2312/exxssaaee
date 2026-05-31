@@ -44,6 +44,11 @@ def reindex_document(db: Session, doc: Document) -> None:
 
 
 def attach_roles(db: Session, doc: Document, role_ids: list[int]) -> None:
-    roles = db.query(Role).filter(Role.id.in_(role_ids)).all()
+    """Назначает роли доступа к документу; роль admin добавляется всегда."""
+    ids = set(role_ids)
+    admin = db.query(Role).filter(Role.code == "admin").first()
+    if admin:
+        ids.add(admin.id)
+    roles = db.query(Role).filter(Role.id.in_(ids)).all()
     doc.allowed_roles = roles
     db.flush()

@@ -37,13 +37,21 @@ _NO_DATA_MARKERS = (
 )
 
 
-def is_rag_uncertain(top_score: float | None, answer_text: str) -> bool:
+def is_rag_uncertain(
+    top_score: float | None,
+    answer_text: str,
+    *,
+    best_title_match: float | None = None,
+) -> bool:
     """True, если ответ RAG нужно считать неуверенным.
 
     Срабатывает по любому из условий:
       * нет релевантных фрагментов (top_score is None или < THRESHOLD);
       * в тексте ответа LLM есть маркер «не нашли в корпусе».
     """
+    if best_title_match is not None and best_title_match >= 0.33:
+        if top_score is not None and top_score >= 0.20:
+            return False
     if top_score is None or top_score < RAG_UNCERTAIN_THRESHOLD:
         return True
     lo = (answer_text or "").lower()

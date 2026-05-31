@@ -6,6 +6,14 @@ export type ChatMsg = {
   role: "user" | "assistant";
   content: string;
   sources?: ChatResp["sources"];
+  /** Идентификатор RAG-запроса для отправки оценки (только для ответа ассистента). */
+  ragQueryId?: number | null;
+  /** Вопрос пользователя, на который дан этот ответ — нужен для эскалации в заявку. */
+  question?: string;
+  suggestedCode?: string | null;
+  suggestedName?: string | null;
+  /** Оценка пользователя: «полезно» / «не полезно». */
+  feedback?: "up" | "down";
 };
 
 export type ChatTab = {

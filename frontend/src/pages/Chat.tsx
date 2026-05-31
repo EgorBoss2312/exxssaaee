@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   apiGet,
   apiPost,
+  sendFeedback,
   type ChatResp,
   type CreateRequestPayload,
   type Department,
@@ -134,7 +135,15 @@ export default function Chat() {
                 backendSessionId: res.session_id,
                 msgs: [
                   ...c.msgs,
-                  { role: "assistant", content: res.answer, sources: res.sources },
+                  {
+                    role: "assistant",
+                    content: res.answer,
+                    sources: res.sources,
+                    ragQueryId: res.rag_query_id ?? null,
+                    question: q,
+                    suggestedCode: res.suggested_department_code ?? null,
+                    suggestedName: res.suggested_department_name ?? null,
+                  },
                 ],
                 updatedAt: Date.now(),
               },
@@ -187,6 +196,44 @@ export default function Chat() {
     setInput("");
     setErr(null);
     setEscalation(null);
+  }
+
+  async function onFeedback(chatId: string, msgIndex: number, helpful: boolean) {
+    const tab = chats.find((c) => c.id === chatId);
+    const m = tab?.msgs[msgIndex];
+    if (!m || m.role !== "assistant" || m.ragQueryId == null || m.feedback) return;
+
+    // оптимистично фиксируем выбор пользователя
+    setChats((prev) =>
+      prev.map((c) =>
+        c.id !== chatId
+          ? c
+          : {
+              ...c,
+              msgs: c.msgs.map((mm, j) =>
+                j === msgIndex ? { ...mm, feedback: helpful ? "up" : "down" } : mm,
+              ),
+              updatedAt: Date.now(),
+            },
+      ),
+    );
+
+    try {
+      await sendFeedback(m.ragQueryId, helpful);
+    } catch (ex) {
+      setErr(String(ex));
+    }
+
+    // дизлайк → предлагаем эскалацию вопроса в заявку
+    if (!helpful) {
+      setEscalation({
+        message: m.question ?? m.content,
+        suggestedCode: m.suggestedCode ?? null,
+        suggestedName: m.suggestedName ?? null,
+        ragQueryId: m.ragQueryId,
+      });
+      setSelectedDepCode(m.suggestedCode ?? "");
+    }
   }
 
   async function onEscalate() {
@@ -296,6 +343,39 @@ export default function Chat() {
                             </li>
                           ))}
                         </ul>
+                      </div>
+                    )}
+                    {m.ragQueryId != null && (
+                      <div className="feedback-row">
+                        {m.feedback ? (
+                          <span className="feedback-done muted">
+                            {m.feedback === "up"
+                              ? "Спасибо за оценку!"
+                              : "Отмечено как неполезное — передайте вопрос специалистам ниже."}
+                          </span>
+                        ) : (
+                          <>
+                            <span className="muted">Ответ помог?</span>
+                            <button
+                              type="button"
+                              className="btn-feedback"
+                              title="Полезно"
+                              aria-label="Ответ полезен"
+                              onClick={() => onFeedback(activeChatId, i, true)}
+                            >
+                              👍
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-feedback"
+                              title="Не помогло — передать вопрос специалистам"
+                              aria-label="Ответ не помог"
+                              onClick={() => onFeedback(activeChatId, i, false)}
+                            >
+                              👎
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>

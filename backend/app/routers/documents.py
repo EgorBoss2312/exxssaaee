@@ -213,6 +213,167 @@ async def upload_document(
     return _doc_to_out(doc)
 
 
+@router.post("/reindex")
+def reindex_documents(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(require_kb_manager)],
+):
+    """
+    Пересчитать текст и эмбеддинги для всех документов (актуализация базы знаний).
+    Доступно администратору и ИТ.
+    """
+    docs = db.query(Document).order_by(Document.id.asc()).all()
+    reindexed = 0
+    missing = 0
+    normalized = 0
+    for doc in docs:
+        path = resolve_storage_path(doc.storage_path)
+        if not path.is_file():
+            missing += 1
+            reindex_document(db, doc)
+            reindexed += 1
+            continue
+        new_sp = normalize_storage_path(path)
+        if doc.storage_path != new_sp:
+            doc.storage_path = new_sp
+            normalized += 1
+        reindex_document(db, doc)
+        reindexed += 1
+
+    write_audit(
+        db,
+        actor_id=user.id,
+        action="documents_reindex",
+        object_type="document",
+        object_id=None,
+        details={
+            "reindexed": reindexed,
+            "missing_files": missing,
+            "paths_normalized": normalized,
+            "total": len(docs),
+        },
+        request=request,
+    )
+
+    db.commit()
+    return {
+        "reindexed": reindexed,
+        "missing_files": missing,
+        "paths_normalized": normalized,
+        "total": len(docs),
+    }
+
+
+@router.put("/{doc_id}/file", response_model=DocumentOut)
+async def replace_document_file(
+    doc_id: int,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(require_kb_manager)],
+    file: UploadFile = File(...),
+):
+    """Заменить файл документа новой версией с компьютера пользователя."""
+    doc = (
+        db.query(Document)
+        .options(joinedload(Document.allowed_roles), joinedload(Document.tags))
+        .filter(Document.id == doc_id)
+        .first()
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Документ не найден")
+
+    old_path = resolve_storage_path(doc.storage_path)
+    old_filename = doc.original_filename
+
+    settings = get_settings()
+    os.makedirs(settings.upload_dir, exist_ok=True)
+    ext = Path(file.filename or "file").suffix
+    stored = f"{uuid.uuid4().hex}{ext}"
+    ud = Path(settings.upload_dir)
+    dest = (BACKEND_ROOT / ud / stored) if not ud.is_absolute() else (ud / stored)
+    with dest.open("wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    doc.original_filename = file.filename or stored
+    doc.mime_type = file.content_type
+    doc.storage_path = normalize_storage_path(dest)
+
+    reindex_document(db, doc)
+
+    write_audit(
+        db,
+        actor_id=user.id,
+        action="document_replace",
+        object_type="document",
+        object_id=doc.id,
+        details={
+            "title": doc.title,
+            "old_filename": old_filename,
+            "new_filename": doc.original_filename,
+        },
+        request=request,
+    )
+
+    db.commit()
+
+    try:
+        if old_path.is_file() and old_path.resolve() != dest.resolve():
+            old_path.unlink()
+    except OSError:
+        pass
+
+    db.refresh(doc)
+    return _doc_to_out(doc)
+
+
+@router.post("/{doc_id}/reindex")
+def reindex_one_document(
+    doc_id: int,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(require_kb_manager)],
+):
+    """Пересчитать текст и эмбеддинги одного документа."""
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Документ не найден")
+
+    path = resolve_storage_path(doc.storage_path)
+    file_missing = not path.is_file()
+    path_normalized = False
+    if not file_missing:
+        new_sp = normalize_storage_path(path)
+        if doc.storage_path != new_sp:
+            doc.storage_path = new_sp
+            path_normalized = True
+
+    reindex_document(db, doc)
+
+    write_audit(
+        db,
+        actor_id=user.id,
+        action="document_reindex",
+        object_type="document",
+        object_id=doc.id,
+        details={
+            "title": doc.title,
+            "filename": doc.original_filename,
+            "file_missing": file_missing,
+            "path_normalized": path_normalized,
+        },
+        request=request,
+    )
+
+    db.commit()
+    return {
+        "ok": True,
+        "document_id": doc.id,
+        "file_missing": file_missing,
+        "path_normalized": path_normalized,
+    }
+
+
 @router.delete("/{doc_id}")
 def delete_document(
     doc_id: int,

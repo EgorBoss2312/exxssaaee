@@ -40,6 +40,10 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Базовый URL и модель для OpenAI-совместимого провайдера (например, OpenRouter).
+      # Без них ключ OpenRouter (sk-or-...) уходит на api.openai.com и отклоняется.
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
     volumes:
       - edda_uploads:/app/data/uploads
     depends_on:

@@ -25,8 +25,13 @@ RUN pip install --no-cache-dir \
     torch==2.5.1
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Предзагрузка модели эмбеддингов в образ: иначе она качается с HuggingFace (~470МБ)
+# при первом запросе чата, из-за чего первый ответ «висит». Зашиваем в слой образа.
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')"
+
 COPY backend/app ./app
 COPY backend/migrations ./migrations
+COPY backend/scripts ./scripts
 COPY --from=frontend /fe/dist ./app/static
 
 ENV PYTHONPATH=/app

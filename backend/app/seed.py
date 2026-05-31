@@ -234,7 +234,7 @@ def seed_if_empty(db: Session) -> None:
 2. Согласование с непосредственным руководителем обязательно.
 3. График отпусков утверждается ежегодно.
 """,
-            ["hr", "director"],
+            ["hr", "director", "production", "otk", "it", "sales", "logistics", "finance"],
         ),
     ]
 
